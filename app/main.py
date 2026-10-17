@@ -851,10 +851,76 @@ async def _priorities_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ─────────────────────────── chat libre ───────────────────────────
 
+#: Formes courtes qu'un élève tape vraiment. Clé = mot de la question,
+#: valeur = débuts de matière (sans accents) qu'il désigne.
+_ALIASES_MATIERES: dict[str, tuple[str, ...]] = {
+    "math": ("mathematiques",),
+    "maths": ("mathematiques",),
+    "svt": ("sciences de la vie",),
+    "ses": ("sciences economiques",),
+    "hg": ("histoire",),
+    "hggsp": ("histoire",),
+    "eps": ("education physique",),
+    "sport": ("education physique",),
+    "philo": ("philosophie",),
+    "techno": ("technologie",),
+    "francais": ("francais",),
+    "anglais": ("anglais",),
+    "espagnol": ("espagnol",),
+    "allemand": ("allemand",),
+    "latin": ("latin",),
+    "physique": ("physique",),
+    "chimie": ("chimie",),
+    "musique": ("musique",),
+    "info": ("informatique", "numerique"),
+}
+
+
+def _fold(text: str) -> str:
+    """Minuscules sans accents (comparaison de matières)."""
+    import unicodedata
+
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+def mentioned_subjects(question: str, subjects: list[str]) -> list[str]:
+    """Matières réellement nommées dans la question.
+
+    Sert à restreindre le contexte envoyé au LLM : avec vingt-cinq devoirs,
+    « j'ai quoi en maths ? » doit être répondu sur les maths, pas sur ce que
+    le modèle a envie de piocher. Volontairement conservateur : en cas de
+    doute on ne filtre PAS (mieux vaut une réponse large qu'un devoir caché).
+    """
+    q = _fold(question or "")
+    if not q:
+        return []
+    words = {w for w in re.split(r"[^a-z0-9]+", q) if w}
+    found: list[str] = []
+    for subject in subjects:
+        folded = _fold(subject)
+        if folded and folded in q:
+            found.append(subject)
+            continue
+        head = folded.split()[0] if folded.split() else folded
+        if any(len(w) >= 5 and head.startswith(w) for w in words):
+            found.append(subject)
+            continue
+        if any(
+            alias in words and any(folded.startswith(target) for target in targets)
+            for alias, targets in _ALIASES_MATIERES.items()
+        ):
+            found.append(subject)
+    return found
+
 
 async def _data_block(conn, user_id: str, cfg: config.Config, question: str) -> str:
     items, overdue, upcoming = await _load_rows(conn, user_id, cfg)
-    rows = (list(overdue) + list(upcoming))[:40]
+    rows = list(overdue) + list(upcoming)
+    asked = mentioned_subjects(question, sorted({row.item.subject for row in rows}))
+    if asked and len(asked) <= 3:
+        rows = [row for row in rows if row.item.subject in asked]
+    rows = rows[:40]
     lines = [
         f"[{row.key[:12]}] {row.item.subject} | {row.item.kind} | "
         f"{row.item.due_date.isoformat() if row.item.due_date else '-'} | {row.summary}"
@@ -890,7 +956,11 @@ async def _chat_answer(
         await _reply(context.bot, chat_id, answer[:700])
         return
     _, overdue, upcoming = await _load_rows(conn, user["id"], cfg)
-    rows = (list(overdue) + list(upcoming))[:3]
+    rows = list(overdue) + list(upcoming)
+    asked = mentioned_subjects(question, sorted({row.item.subject for row in rows}))
+    if asked and len(asked) <= 3:
+        rows = [row for row in rows if row.item.subject in asked]
+    rows = rows[:3]
     if not rows:
         await update.message.reply_text(
             "Je n'ai pas pu réfléchir, et je n'ai aucun devoir en base. "
@@ -1067,8 +1137,12 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
     for handler in handlers:
         application.add_handler(handler, group=0)
     application.add_handler(TypeHandler(Update, _note_activity), group=-1)
+    # Le texte libre reste dans le GROUPE 0, en dernier : `python-telegram-bot`
+    # évalue TOUS les groupes (un seul handler par groupe), donc un
+    # `MessageHandler` en groupe 1 retraiterait « 1234 » juste après l'avoir
+    # consommé comme code PIN — quota de chat brûlé à chaque inscription.
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, on_text), group=1
+        MessageHandler(filters.TEXT & ~filters.COMMAND, on_text), group=0
     )
     return application
 
@@ -1078,7 +1152,10 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s : %(message)s",
     )
-    cfg = config.from_env()
+    try:
+        cfg = config.from_env()
+    except RuntimeError as exc:
+        raise SystemExit(f"Configuration incomplète : {exc}") from None
     cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
     db.init_schema(conn)

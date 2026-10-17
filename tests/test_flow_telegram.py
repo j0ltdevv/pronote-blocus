@@ -448,15 +448,6 @@ def test_chat_libre_renvoie_la_reponse_tronquee(cfg, conn, pronote, llm_fake, ma
     assert seen["texts"][-1] == "A" * 700
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG app/main.py:855 `_data_block` envoie TOUS les items de l'élève au LLM, "
-        "sans filtrer sur la question : « j'ai quoi en maths ? » transmet aussi la "
-        "ligne SVT. Le plan §10 décrit un contexte global ; l'attendu de recette est "
-        "un bloc ne contenant que les lignes de la matière demandée."
-    ),
-)
 def test_chat_libre_contexte_filtre_sur_la_question(cfg, conn, pronote, llm_fake, make_user):
     user_id = make_user(chat_id=CHAT)
     db.replace_items(
@@ -550,16 +541,6 @@ def test_reauth_compte_existant_ne_cree_pas_de_second_compte(
 # ─────────────────────────── bug observé : double traitement ───────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG app/main.py:909 `on_text` (enregistré l. 1071) est enregistré dans le groupe 1 : pendant "
-        "les états de connexion, le ConversationHandler (groupe 0) traite le texte "
-        "PUIS `on_text` le retraite. « 1234 » en état PIN envoie donc « Envoie "
-        "/start… » (état QR) et, une fois le compte créé, une question LLM "
-        "parasite est consommée (quota) et une réponse de chat est envoyée."
-    ),
-)
 def test_pas_de_double_traitement_pendant_la_connexion(
     cfg, conn, pronote, llm_fake, monkeypatch
 ):
