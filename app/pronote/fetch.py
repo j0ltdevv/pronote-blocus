@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import hashlib
+import json
 import os
 import threading
 import time
@@ -48,6 +50,10 @@ ERR_UNREACHABLE = "PRONOTE injoignable"
 ERR_TIMEOUT = "timeout"
 ERR_RATE = "PRONOTE nous ralentit, réessaie dans 5 minutes"
 ERR_UNKNOWN = "PRONOTE n'a pas répondu correctement"
+
+#: Modèle factice sous lequel le cache d'extraction des messages est rangé
+#: dans la table `summaries` (voir `_extract`).
+EXTRACT_MODEL = "extract-v1"
 
 STATUS_TRAITE = "traite"
 STATUS_VIDE = "vide"
@@ -263,32 +269,54 @@ def _discussion_body(discussion: Any) -> str:
     return "\n".join(parts)
 
 
-def _extract(subject: str, body: str, cfg: Config) -> dict | None:
-    """Extraction LLM d'un devoir caché dans un message.
+def _extract(conn: Any, subject: str, body: str, cfg: Config) -> dict | None:
+    """Extraction LLM d'un devoir caché dans un message, AVEC cache.
 
-    Un `None` est retenté une seule fois (le modèle est instable) ; LLM
-    indisponible ⇒ None, le message reste un item `kind="message"`.
+    Règle §7 appliquée ici aussi : le coût du modèle ne doit pas dépendre du
+    nombre d'élèves. Deux cent élèves de la même classe reçoivent le même
+    message de prof : un seul appel, la réponse est rangée dans `summaries`
+    sous le modèle `extract-v1` et servie aux suivants. La clé est un hash du
+    couple (sujet, corps) : un message modifié repart au modèle.
     """
     if not (cfg.llm_messages and cfg.llm_enabled and body.strip()):
         return None
+
+    cache_key = hashlib.sha256(f"{subject}|{body}".encode("utf-8")).hexdigest()
+    cached = db.get_summaries(conn, [cache_key], EXTRACT_MODEL).get(cache_key)
+    if cached is not None:
+        try:
+            stored = json.loads(cached["summary"] or "null")
+        except ValueError:
+            return None
+        return stored if isinstance(stored, dict) else None
+
     try:
         from .. import llm  # import tardif : évite un cycle
+
+        found, sure = llm.extract_devoir_checked(subject, body, cfg)
     except Exception:
         return None
-    for _attempt in (1, 2):
-        try:
-            found = llm.extract_devoir(subject, body, cfg)
-        except Exception:
-            return None
-        if found:
-            return found
-    return None
+    if not sure:
+        # Panne du modèle : rien en cache, on retentera à la synchro suivante.
+        return None
+    db.put_summaries(
+        conn,
+        EXTRACT_MODEL,
+        {
+            cache_key: {
+                "summary": json.dumps(found, ensure_ascii=False) if found else "null",
+                "action": "",
+                "effort": "",
+            }
+        },
+    )
+    return found
 
 
 # ─────────────────────────── collecte ───────────────────────────
 
 
-def _fetch_items(client: Any, cfg: Config) -> RawBundle:
+def _fetch_items(client: Any, cfg: Config, conn: Any) -> RawBundle:
     """Phase `items` : devoirs, informations, messagerie. Aucun `.content`."""
     date_from, today, date_to = _window(cfg)
     homework = _call(client.homework, date_from, date_to) or []
@@ -319,7 +347,7 @@ def _fetch_items(client: Any, cfg: Config) -> RawBundle:
             body = ""
         if not body:
             continue
-        discussion_extraction = _extract(subject, body, cfg)
+        discussion_extraction = _extract(conn, subject, body, cfg)
         extracted[subject] = discussion_extraction
         discussions.append((subject, (lambda text=body: text)))
 
@@ -400,7 +428,7 @@ def collect(
         db.set_sync_state(conn, user_id, phase)
         class_name = class_name_of(client)
         if phase == PHASE_ITEMS:
-            bundle = _fetch_items(client, cfg)
+            bundle = _fetch_items(client, cfg, conn)
             items = build_items(client, bundle)
             reads = 0
         else:

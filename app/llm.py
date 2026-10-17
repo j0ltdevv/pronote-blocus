@@ -284,20 +284,31 @@ def _extract_once(subject: str, content: str, cfg: Config) -> tuple[dict | None,
     }, True
 
 
-def extract_devoir(subject: str, content: str, cfg: Config) -> dict | None:
-    """Extrait un devoir d'un message de prof ; un « null » est retenté une fois."""
+def extract_devoir_checked(subject: str, content: str, cfg: Config) -> tuple[dict | None, bool]:
+    """→ (devoir, réponse_interprétable).
+
+    `bool=False` = le modèle n'a pas pu être lu (panne, JSON cassé, timeout) :
+    l'appelant ne doit RIEN mettre en cache, sinon une panne passagère fige
+    « pas de devoir » pour la semaine. `bool=True` + `None` = vrai « null ».
+    """
     if not cfg.llm_enabled or not (content or "").strip():
-        return None
+        return None, False
     for _ in range(2):
         try:
             found, interpretable = _extract_once(subject, content, cfg)
         except Exception:
-            return None
+            return None, False
         if found is not None:
-            return found
+            return found, True
         if not interpretable:
-            return None
-    return None
+            return None, False
+    return None, True
+
+
+def extract_devoir(subject: str, content: str, cfg: Config) -> dict | None:
+    """Extrait un devoir d'un message de prof ; un « null » est retenté une fois."""
+    found, _interpretable = extract_devoir_checked(subject, content, cfg)
+    return found
 
 
 # ─────────────────────────── chat ancré ───────────────────────────

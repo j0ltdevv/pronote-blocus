@@ -852,16 +852,18 @@ async def _priorities_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ─────────────────────────── chat libre ───────────────────────────
 
 #: Formes courtes qu'un élève tape vraiment. Clé = mot de la question,
-#: valeur = débuts de matière (sans accents) qu'il désigne.
+#: valeur = débuts de matière (sans accents) qu'il désigne. On n'accepte QUE
+#: des tokens qui ne sont pas des mots français courants : « ses » est un
+#: possessif (« j'ai fini ses exercices »), « sport » et « info » traînent dans
+#: des phrases sans rapport — filtrer là-dessus cacherait toutes les autres
+#: matières.
 _ALIASES_MATIERES: dict[str, tuple[str, ...]] = {
     "math": ("mathematiques",),
     "maths": ("mathematiques",),
     "svt": ("sciences de la vie",),
-    "ses": ("sciences economiques",),
     "hg": ("histoire",),
     "hggsp": ("histoire",),
     "eps": ("education physique",),
-    "sport": ("education physique",),
     "philo": ("philosophie",),
     "techno": ("technologie",),
     "francais": ("francais",),
@@ -871,8 +873,6 @@ _ALIASES_MATIERES: dict[str, tuple[str, ...]] = {
     "latin": ("latin",),
     "physique": ("physique",),
     "chimie": ("chimie",),
-    "musique": ("musique",),
-    "info": ("informatique", "numerique"),
 }
 
 
@@ -882,6 +882,26 @@ def _fold(text: str) -> str:
 
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+#: Noms de matière qui sont AUSSI des mots français courants. « SES » se tape
+#: exactement comme le possessif : « j'ai fini ses exercices » ne doit pas
+#: filtrer le contexte sur la matière SES. On exige donc une préposition.
+_MOTS_AMBIGUS = {"ses", "des", "les", "mes", "tes", "ces", "nos", "vos", "aux"}
+
+
+def _nomme(folded: str, q: str) -> bool:
+    """La matière est-elle nommée, sur MOT entier (pas noyée dans un mot) ?"""
+    if not folded:
+        return False
+    if folded in _MOTS_AMBIGUS:
+        return bool(
+            re.search(
+                rf"(?:^|[^a-z0-9])(?:en|de|d'|pour)\s+{re.escape(folded)}(?![a-z0-9])",
+                q,
+            )
+        )
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(folded)}(?![a-z0-9])", q))
 
 
 def mentioned_subjects(question: str, subjects: list[str]) -> list[str]:
@@ -899,7 +919,7 @@ def mentioned_subjects(question: str, subjects: list[str]) -> list[str]:
     found: list[str] = []
     for subject in subjects:
         folded = _fold(subject)
-        if folded and folded in q:
+        if _nomme(folded, q):
             found.append(subject)
             continue
         head = folded.split()[0] if folded.split() else folded

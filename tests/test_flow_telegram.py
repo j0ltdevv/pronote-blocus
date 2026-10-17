@@ -731,3 +731,51 @@ def test_digest_tronque_ne_laisse_pas_de_section_vide(
             assert any(re.match(r"^\d+\. ", suivante) for suivante in lignes[pos + 1 :]), (
                 "section « Pour aujourd'hui » vide"
             )
+
+
+def test_chat_libre_mot_ambigu_ne_filtre_pas(cfg, conn, pronote, llm_fake, make_user):
+    """« ses » est un possessif : la question ne doit PAS filtrer sur la matière SES.
+
+    Avant correctif, l'alias « ses » et la correspondance de nom en sous-chaîne
+    réduisaient le contexte à SES et cachaient toutes les autres matières.
+    """
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn,
+        user_id,
+        [
+            devoir("SES", "Lire le chapitre sur les inégalités.", TODAY - timedelta(days=3)),
+            devoir("Mathématiques", "Contrôle sur les dérivées.", TODAY - timedelta(days=2)),
+        ],
+    )
+
+    async def scenario(rig):
+        await rig.text("j'ai fini ses exercices")
+
+    run_flow(cfg, conn, scenario)
+
+    _, data_block = llm_fake.chat_calls[0]
+    assert "Mathématiques" in data_block, "la matière SES a filtré tout le reste"
+    assert "SES" in data_block
+
+
+def test_chat_libre_matiere_ses_nommee_avec_preposition(cfg, conn, pronote, llm_fake, make_user):
+    """Nommée pour de vrai (« en SES »), la matière filtre bien le contexte."""
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn,
+        user_id,
+        [
+            devoir("SES", "Lire le chapitre sur les inégalités.", TODAY - timedelta(days=3)),
+            devoir("Mathématiques", "Contrôle sur les dérivées.", TODAY - timedelta(days=2)),
+        ],
+    )
+
+    async def scenario(rig):
+        await rig.text("j'ai quoi en SES ?")
+
+    run_flow(cfg, conn, scenario)
+
+    _, data_block = llm_fake.chat_calls[0]
+    assert "SES" in data_block
+    assert "Mathématiques" not in data_block
