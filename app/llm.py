@@ -88,7 +88,8 @@ def _chat(
         )
         response.raise_for_status()
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        content = msg.get("content") or msg.get("reasoning_content")
     except Exception as exc:  # httpx.HTTPError, timeout, JSON cassé, forme inattendue…
         log.warning("appel LLM échoué : %s", exc)
         return None
