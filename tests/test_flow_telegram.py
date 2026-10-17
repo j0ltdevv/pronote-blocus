@@ -13,15 +13,26 @@ import io
 import json
 import re
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pronotepy
 import pytest
 import segno
 from telegram import Update
 
 from app import config, crypto, db, llm
-from app.main import MSG_CODE, MSG_CRYPTO, MSG_INDEX, MSG_QUOTA, build_application
+from app.main import (
+    MSG_CODE,
+    MSG_CONNEXION,
+    MSG_CRYPTO,
+    MSG_INDEX,
+    MSG_MFA,
+    MSG_QUOTA,
+    _cours_after_sync,
+    _digest_pass,
+    build_application,
+)
 from app.pronote import auth, fetch
 from app.pronote.normalize import Item, make_item
 from tests.fake_telegram import FakeTelegramRequest
@@ -573,3 +584,533 @@ def test_pas_de_double_traitement_pendant_la_connexion(
     run_flow(cfg, conn, scenario)
 
     assert llm_fake.chat_calls == []
+
+
+# ─────────────────────────── 8. reconnexion après jeton révoqué ───────────────────────────
+
+
+def test_refresh_jeton_invalide_puis_reauth_conserve_items_et_fait(
+    cfg, conn, pronote, llm_fake, make_user, secret, monkeypatch
+):
+    user_id = make_user(chat_id=CHAT, password="ancien-jeton")
+    maths = devoir(
+        "Mathématiques", "Contrôle sur les dérivées.", TODAY - timedelta(days=4)
+    )
+    svt = devoir(
+        "SVT", "Schéma de la cellule à légender.", TODAY - timedelta(days=2)
+    )
+    pronote.items = [maths, svt]
+    db.replace_items(conn, user_id, [maths, svt])
+    db.mark_done(conn, user_id, maths.key)
+    db.set_priorities(conn, user_id, ["SVT"])
+    patch_login(monkeypatch)
+
+    def sync_refuse(conn_, user_id_, cfg_, phase="items"):  # noqa: ANN001
+        db.set_last_error(conn_, user_id_, fetch.ERR_TOKEN)
+        return fetch.SyncResult(False, fetch.ERR_TOKEN, [], None, phase, 0)
+
+    monkeypatch.setattr(fetch, "sync_user", sync_refuse)
+
+    async def scenario(rig):
+        texts = await rig.text("/refresh")
+        assert any("a expiré" in t and "/start" in t for t in texts)
+
+        # `/start` doit rouvrir le parcours QR, pas servir la liste périmée.
+        texts = await rig.text("/start")
+        assert any("QR code" in t for t in texts)
+
+        texts = await rig.photo(qr_png())
+        assert any("QR lu" in t for t in texts)
+        texts = await rig.text("1234")
+        assert "Connecté, 3A" in plain("\n".join(texts))
+
+        texts = await rig.text("/retard")
+        joined = plain("\n".join(texts))
+        assert "Schéma de la cellule à légender" in joined
+        assert "Contrôle sur les dérivées" not in joined
+
+    run_flow(cfg, conn, scenario)
+
+    rows = conn.execute("SELECT * FROM users WHERE chat_id = ?", (CHAT,)).fetchall()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == user_id
+    assert row["last_error"] is None
+    assert crypto.decrypt(row["token_enc"], secret) == "tok"
+    assert row["client_identifier"] == "ident-2"
+    assert db.get_priorities(conn, user_id) == {"SVT": 0}
+    assert maths.key in db.done_keys(conn, user_id)
+
+
+# ─────────────────────────── 9. commandes de liste ───────────────────────────
+
+
+def test_retard_vide_et_fait_sans_numero(cfg, conn, pronote, llm_fake, make_user):
+    make_user(chat_id=CHAT)
+
+    async def scenario(rig):
+        texts = await rig.text("/retard")
+        assert any("Rien en retard 🎉" in t for t in texts)
+
+        texts = await rig.text("/fait")
+        assert any("Envoie /fait suivi d'un numéro" in t for t in texts)
+        texts = await rig.text("/fait abc")
+        assert any("Envoie /fait suivi d'un numéro" in t for t in texts)
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_aujourdhui_et_matiere_filtrent_les_lignes(
+    cfg, conn, pronote, llm_fake, make_user
+):
+    user_id = make_user(chat_id=CHAT)
+    maths_today = devoir("Mathématiques", "DM dérivées pour aujourd'hui.", TODAY)
+    svt_today = devoir("SVT", "Schéma cellule pour aujourd'hui.", TODAY)
+    maths_vieux = devoir(
+        "Mathématiques", "Exercice ancien de géométrie.", TODAY - timedelta(days=4)
+    )
+    anglais_futur = devoir(
+        "Anglais", "Vocabulaire dans trois jours.", TODAY + timedelta(days=3)
+    )
+    db.replace_items(conn, user_id, [maths_today, svt_today, maths_vieux, anglais_futur])
+
+    async def scenario(rig):
+        texts = await rig.text("/aujourdhui")
+        joined = plain("\n".join(texts))
+        assert "Aujourd'hui et demain — 2 item(s)" in joined
+        assert "DM dérivées pour aujourd'hui" in joined
+        assert "Schéma cellule pour aujourd'hui" in joined
+        assert "Vocabulaire dans trois jours" not in joined
+        assert "Exercice ancien de géométrie" not in joined
+
+        texts = await rig.text("/matiere math")
+        joined = plain("\n".join(texts))
+        assert "math — 2 item(s)" in joined
+        assert "DM dérivées pour aujourd'hui" in joined
+        assert "Exercice ancien de géométrie" in joined
+        assert "Schéma cellule" not in joined
+
+        texts = await rig.text("/matiere inconnue")
+        assert any("Rien trouvé en « inconnue »" in t for t in texts)
+        texts = await rig.text("/matiere")
+        assert any("Envoie /matiere suivi du nom" in t for t in texts)
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_cours_groupe_par_matiere_et_filtre(cfg, conn, pronote, llm_fake, make_user):
+    user_id = make_user(chat_id=CHAT)
+    recent = devoir(
+        "Mathématiques", "Chapitre 4 : intégrales.", TODAY - timedelta(days=1), kind="cours"
+    )
+    older = devoir(
+        "Mathématiques", "Chapitre 3 : dérivées.", TODAY - timedelta(days=5), kind="cours"
+    )
+    svt = devoir("SVT", "Tectonique des plaques.", TODAY - timedelta(days=2), kind="cours")
+    db.replace_items(conn, user_id, [older, recent, svt])
+
+    async def scenario(rig):
+        texts = await rig.text("/cours")
+        joined = plain("\n".join(texts))
+        assert "Cours à rattraper" in joined
+        assert "Chapitre 4 : intégrales" in joined
+        assert "Chapitre 3 : dérivées" in joined
+        assert "Tectonique des plaques" in joined
+        assert joined.index("Chapitre 4") < joined.index("Chapitre 3")
+
+        texts = await rig.text("/cours svt")
+        joined = plain("\n".join(texts))
+        assert "Tectonique des plaques" in joined
+        assert "Chapitre 4" not in joined
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_resume_sans_synthese_aligne_la_liste_sur_fait(
+    cfg, conn, pronote, llm_fake, make_user
+):
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn,
+        user_id,
+        [
+            devoir("Mathématiques", "DM n°4 à rendre.", TODAY - timedelta(days=3)),
+            devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=2)),
+            devoir("Anglais", "Vocabulaire à apprendre.", TODAY - timedelta(days=1)),
+        ],
+    )
+
+    async def scenario(rig):
+        texts = await rig.text("/resume")
+        joined = plain("\n".join(texts))
+        assert "synthèse indisponible" in joined
+        key = db.resolve_list_ref(conn, user_id, 1)
+        assert key is not None
+        texts = await rig.text("/fait 1")
+        assert texts[-1] == "✅"
+        assert key in db.done_keys(conn, user_id)
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_refresh_synchronise_puis_respecte_la_fenetre_de_10_minutes(
+    cfg, conn, pronote, llm_fake, make_user, monkeypatch
+):
+    user_id = make_user(chat_id=CHAT)
+    maths = devoir("Mathématiques", "DM dérivées.", TODAY - timedelta(days=1))
+    pronote.items = [maths]
+
+    def sync_ok(conn_, user_id_, cfg_, phase="items"):  # noqa: ANN001
+        pronote.sync_calls.append((user_id_, phase))
+        db.replace_items(conn_, user_id_, list(pronote.items))
+        db.mark_synced(conn_, user_id_)
+        return fetch.SyncResult(
+            True, None, list(pronote.items), pronote.class_name, phase, 0
+        )
+
+    monkeypatch.setattr(fetch, "sync_user", sync_ok)
+
+    async def scenario(rig):
+        texts = await rig.text("/refresh")
+        assert any("Je vais chercher tes devoirs" in t for t in texts)
+        assert "DM dérivées" in plain("\n".join(texts))
+        assert len(pronote.sync_calls) == 1
+
+        texts = await rig.text("/refresh")
+        assert not any("Je vais chercher tes devoirs" in t for t in texts)
+        assert "DM dérivées" in plain("\n".join(texts))
+        assert len(pronote.sync_calls) == 1
+
+    run_flow(cfg, conn, scenario)
+
+
+# ─────────────────────────── 10. suppression et admin ───────────────────────────
+
+
+def test_supprimer_demande_confirmation_puis_efface(
+    cfg, conn, pronote, llm_fake, make_user
+):
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn, user_id, [devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=2))]
+    )
+
+    async def scenario(rig):
+        texts = await rig.text("/supprimer")
+        assert any("Renvoie /supprimer dans la minute" in t for t in texts)
+        assert db.get_user_by_chat(conn, CHAT) is not None
+
+        texts = await rig.text("/supprimer")
+        assert any("compte et toutes tes données sont supprimés" in t for t in texts)
+        assert db.get_user_by_chat(conn, CHAT) is None
+
+        texts = await rig.text("/retard")
+        assert MSG_CONNEXION in texts
+
+    run_flow(cfg, conn, scenario)
+
+    assert db.get_user(conn, user_id) is None
+    assert conn.execute(
+        "SELECT COUNT(*) AS n FROM items WHERE user_id = ?", (user_id,)
+    ).fetchone()["n"] == 0
+
+
+def test_admin_active_mot_de_passe_et_connexion_sans_qr(
+    cfg, conn, pronote, llm_fake, make_user, secret, monkeypatch
+):
+    admin = cfg.admin_chat_id
+    user_id = make_user(chat_id=CHAT, username="demonstration")
+    calls = []
+
+    class _Client:
+        def export_credentials(self):  # noqa: ANN202
+            return {"password": "motdepasse", "username": "demonstration"}
+
+    def login_with_password(url, username, password, app_uuid, ent=None):  # noqa: ANN001
+        calls.append((url, username, password, app_uuid))
+        return _Client(), {
+            "password": "motdepasse",
+            "username": username,
+            "uuid": app_uuid,
+            "client_identifier": "ident-pw",
+        }
+
+    monkeypatch.setattr(auth, "login_with_password", login_with_password)
+
+    async def scenario(rig):
+        texts = await rig.text("/qui", chat_id=CHAT)
+        assert any("réservée à l'admin" in t for t in texts)
+        texts = await rig.text(f"/mdp {CHAT}", chat_id=CHAT)
+        assert any("réservée à l'admin" in t for t in texts)
+
+        texts = await rig.text("/qui", chat_id=admin)
+        assert "1" in plain("\n".join(texts))
+        assert any("inscrit" in t for t in texts)
+
+        texts = await rig.text(f"/mdp {CHAT}", chat_id=admin)
+        assert any("C'est fait pour" in t for t in texts)
+        assert any("On t'a autorisé la connexion par mot de passe" in t for t in rig.fake.texts(CHAT))
+
+        texts = await rig.text("mon-identifiant")
+        assert any("Envoie ton mot de passe" in t for t in texts)
+        texts = await rig.text("s3cret")
+        joined = plain("\n".join(texts))
+        assert "Connecté." in joined
+        assert "Tes matières" in joined
+        assert any(name == "deleteMessage" for name, _ in rig.fake.sent)
+        assert all("s3cret" not in text for text in rig.fake.texts())
+
+    run_flow(cfg, conn, scenario)
+
+    assert len(calls) == 1
+    assert calls[0][1:3] == ("mon-identifiant", "s3cret")
+    row = db.get_user(conn, user_id)
+    assert row["allow_password"] == 1
+    assert crypto.decrypt(row["token_enc"], secret) == "motdepasse"
+
+
+# ─────────────────────────── 11. conversation : QR texte, PIN, MFA, annulation ───────────────────────────
+
+
+def test_qr_texte_invalide_pin_invalide_priorites_invalides_et_annulation(
+    cfg, conn, pronote, llm_fake, monkeypatch
+):
+    patch_login(monkeypatch)
+
+    async def scenario(rig):
+        await rig.text("/start")
+
+        texts = await rig.text("pas un QR")
+        assert auth.QrNotPronote().message in texts
+
+        texts = await rig.photo(b"pas une image")
+        assert auth.QrNotReadable().message in texts
+
+        texts = await rig.text(
+            json.dumps({"login": "aa", "jeton": "bb", "url": QR_URL})
+        )
+        assert any("QR lu" in t for t in texts)
+
+        texts = await rig.text("12")
+        assert MSG_CODE in texts
+
+        texts = await rig.text("1234")
+        assert "Connecté, 3A" in plain("\n".join(texts))
+
+        texts = await rig.text("99")
+        assert any("Réponds avec les numéros de la liste ci-dessus" in t for t in texts)
+
+        texts = await rig.text("/annuler")
+        assert any("Annulé" in t for t in texts)
+
+    run_flow(cfg, conn, scenario)
+
+    user_id = user_id_of(conn)
+    assert db.get_priorities(conn, user_id) == {}
+
+
+def test_mfa_demande_le_pin_puis_rejoue_le_login(
+    cfg, conn, pronote, llm_fake, monkeypatch
+):
+    calls = []
+
+    class _Client:
+        def export_credentials(self):  # noqa: ANN202
+            return {"password": "tok", "username": "u"}
+
+    def login_with_qr(qr, pin, app_uuid, account_pin=None, **kwargs):  # noqa: ANN001
+        calls.append((pin, account_pin))
+        if account_pin is None:
+            raise pronotepy.MFAError("code PIN demandé")
+        return _Client(), {
+            "password": "tok",
+            "username": "u",
+            "uuid": app_uuid,
+            "client_identifier": "ident-mfa",
+        }
+
+    monkeypatch.setattr(auth, "login_with_qr", login_with_qr)
+
+    async def scenario(rig):
+        await rig.text("/start")
+        await rig.photo(qr_png())
+        texts = await rig.text("1234")
+        assert MSG_MFA in texts
+
+        texts = await rig.text("9876")
+        assert "Connecté, 3A" in plain("\n".join(texts))
+
+    run_flow(cfg, conn, scenario)
+
+    assert calls == [("1234", None), ("1234", "9876")]
+
+
+# ─────────────────────────── 12. tâches de fond ───────────────────────────
+
+
+def test_phase_cours_notifie_un_eleve_actif(cfg, conn, pronote, llm_fake, make_user):
+    user_id = make_user(chat_id=CHAT)
+
+    async def scenario(rig):
+        await rig.text("/retard")
+        rig.app.bot_data["last_seen"][CHAT] = datetime.now(timezone.utc)
+        await _cours_after_sync(rig.app, CHAT, user_id)
+        assert any(
+            "Les contenus de cours sont prêts : /cours" in t
+            for t in rig.fake.texts(CHAT)
+        )
+        assert pronote.sync_calls[-1] == (user_id, "cours")
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_digest_envoie_le_resume_une_fois_par_jour(
+    cfg, conn, pronote, llm_fake, make_user
+):
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn, user_id, [devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=2))]
+    )
+    with conn:
+        conn.execute(
+            "UPDATE users SET digest_hour = 0, digest_day = NULL WHERE id = ?",
+            (user_id,),
+        )
+
+    async def scenario(rig):
+        await _digest_pass(rig.app, conn, cfg)
+        texts = rig.fake.texts(CHAT)
+        assert any("Résumé du jour" in t for t in texts)
+        assert db.get_user(conn, user_id)["digest_day"] == TODAY.isoformat()
+
+        before = len(texts)
+        await _digest_pass(rig.app, conn, cfg)
+        assert len(rig.fake.texts(CHAT)) == before
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_priorites_commande_met_a_jour_puis_renvoie_la_liste(
+    cfg, conn, pronote, llm_fake, make_user
+):
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn,
+        user_id,
+        [
+            devoir("Mathématiques", "DM dérivées.", TODAY - timedelta(days=2)),
+            devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=1)),
+        ],
+    )
+
+    async def scenario(rig):
+        texts = await rig.text("/priorites")
+        joined = plain("\n".join(texts))
+        assert "Tes matières" in joined
+        assert "1. Mathématiques" in joined
+        assert "2. SVT" in joined
+
+        texts = await rig.text("2 1")
+        joined = plain("\n".join(texts))
+        assert "C'est noté" in joined
+        assert "item(s)" in joined
+
+    run_flow(cfg, conn, scenario)
+
+    assert list(
+        subject
+        for subject, _ in sorted(
+            db.get_priorities(conn, user_id).items(), key=lambda kv: kv[1]
+        )
+    ) == ["SVT", "Mathématiques"]
+
+
+def test_retard_page_2_puis_page_invalide(cfg, conn, pronote, llm_fake, make_user):
+    user_id = make_user(chat_id=CHAT)
+    items = [
+        Item(
+            key=f"page-{i:02d}",
+            source="devoir",
+            subject="Mathématiques",
+            title=f"Exercice {i}.",
+            body=f"Exercice {i}.",
+            due_date=TODAY - timedelta(days=1),
+            kind="devoir",
+        )
+        for i in range(20)
+    ]
+    db.replace_items(conn, user_id, items)
+
+    async def scenario(rig):
+        texts = await rig.text("/retard 2")
+        joined = plain("\n".join(texts))
+        assert "— 20 item(s)" in joined
+        assert re.search(r"(?m)^16\. ", joined)
+        assert re.search(r"(?m)^1\. ", joined) is None
+        assert "Page 2/2" in joined
+
+        texts = await rig.text("/retard abc")
+        joined = plain("\n".join(texts))
+        assert "— 20 item(s)" in joined
+        assert re.search(r"(?m)^1\. ", joined)
+        assert re.search(r"(?m)^16\. ", joined) is None
+
+        # Un utilisateur déjà connecté et sans erreur reçoit sa liste : pas de QR.
+        texts = await rig.text("/start")
+        joined = plain("\n".join(texts))
+        assert "En retard" in joined
+        assert "QR code" not in joined
+
+    run_flow(cfg, conn, scenario)
+
+
+def test_mot_de_passe_refuse_conserve_le_compte(
+    cfg, conn, pronote, llm_fake, make_user, secret, monkeypatch
+):
+    admin = cfg.admin_chat_id
+    user_id = make_user(chat_id=CHAT)
+
+    def refuse(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise auth.TokenRefused("refusé")
+
+    monkeypatch.setattr(auth, "login_with_password", refuse)
+
+    async def scenario(rig):
+        await rig.text(f"/mdp {CHAT}", chat_id=admin)
+        texts = await rig.text("mon-identifiant")
+        assert any("Envoie ton mot de passe" in t for t in texts)
+        texts = await rig.text("s3cret")
+        assert any("Identifiant ou mot de passe refusé" in t for t in texts)
+        assert all("s3cret" not in text for text in rig.fake.texts())
+
+    run_flow(cfg, conn, scenario)
+
+    row = db.get_user(conn, user_id)
+    assert row is not None
+    assert crypto.decrypt(row["token_enc"], secret) == "jeton-initial"
+
+
+def test_digest_jeton_invalide_demande_un_qr(
+    cfg, conn, pronote, llm_fake, make_user, monkeypatch
+):
+    user_id = make_user(chat_id=CHAT)
+    with conn:
+        conn.execute(
+            "UPDATE users SET digest_hour = 0, digest_day = NULL WHERE id = ?",
+            (user_id,),
+        )
+
+    def sync_refuse(conn_, user_id_, cfg_, phase="items"):  # noqa: ANN001
+        db.set_last_error(conn_, user_id_, fetch.ERR_TOKEN)
+        return fetch.SyncResult(False, fetch.ERR_TOKEN, [], None, phase, 0)
+
+    monkeypatch.setattr(fetch, "sync_user", sync_refuse)
+
+    async def scenario(rig):
+        await _digest_pass(rig.app, conn, cfg)
+        texts = rig.fake.texts(CHAT)
+        assert any("Ta connexion PRONOTE a expiré" in t for t in texts)
+        assert not any("Résumé du jour" in t for t in texts)
+        assert db.get_user(conn, user_id)["digest_day"] == TODAY.isoformat()
+
+    run_flow(cfg, conn, scenario)
