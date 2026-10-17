@@ -1054,19 +1054,33 @@ async def _send_digest(application: Application, conn, cfg: config.Config, user)
     vus = {row.key for row in rows}
     aujourdhui = [r for r in all_rows if r.item.due_date == config.today() and r.key not in vus]
     today = config.today()
-    lines = render.numbered_lines(rows, today)
+    # On garde chaque ligne AVEC sa clé : le résumé annonce « /fait N », donc
+    # la numérotation affichée doit être exactement celle que /fait résoudra —
+    # et elle doit survivre à la troncature des lignes trop longues.
+    pairs: list[tuple[str, str | None]] = [
+        (render.format_row(i, row, today), row.key)
+        for i, row in enumerate(rows, start=1)
+    ]
     if aujourdhui:
-        lines.append("<b>Pour aujourd'hui</b>")
-        lines.extend(render.numbered_lines(aujourdhui[:8], today, start=len(rows) + 1))
-    if not lines:
+        pairs.append(("<b>Pour aujourd'hui</b>", None))
+        pairs.extend(
+            (render.format_row(i, row, today), row.key)
+            for i, row in enumerate(aujourdhui[:8], start=len(rows) + 1)
+        )
+    if not pairs:
         return
     header = f"<b>Résumé du jour</b> — {len(overdue)} en retard"
     footer = "/retard pour tout voir · /fait N pour cocher"
-    parts = render.compose(header, lines, footer)
-    while len(parts) > 1 and lines:
-        lines = lines[:-1]
-        parts = render.compose(header, lines, footer)
+    parts = render.compose(header, [line for line, _ in pairs], footer)
+    while len(parts) > 1 and len(pairs) > 1:
+        pairs = pairs[:-1]
+        # Une ligne retirée peut laisser l'en-tête de section tout seul en fin
+        # de message : un titre « Pour aujourd'hui » suivi de rien.
+        while pairs and pairs[-1][1] is None:
+            pairs = pairs[:-1]
+        parts = render.compose(header, [line for line, _ in pairs], footer)
     if parts:
+        db.write_list_ref(conn, user["id"], [key for _, key in pairs if key])
         await application.bot.send_message(
             int(user["chat_id"]),
             parts[0],

@@ -21,6 +21,7 @@ import segno
 from telegram import Update
 
 from app import config, crypto, db, llm
+from app import main as bot_main
 from app.main import MSG_CODE, MSG_CRYPTO, MSG_INDEX, MSG_QUOTA, build_application
 from app.pronote import auth, fetch
 from app.pronote.normalize import Item, make_item
@@ -554,3 +555,179 @@ def test_pas_de_double_traitement_pendant_la_connexion(
     run_flow(cfg, conn, scenario)
 
     assert llm_fake.chat_calls == []
+
+
+# ─────────────────────────── 8. numérotation du résumé quotidien ───────────────────────────
+
+
+def _numbered_lines(html_text: str) -> list[tuple[int, str]]:
+    """(numéro, ligne complète) de chaque ligne numérotée d'un message HTML."""
+    out: list[tuple[int, str]] = []
+    for line in html_text.split("\n"):
+        match = re.match(r"^(\d+)\. ", line)
+        if match:
+            out.append((int(match.group(1)), line))
+    return out
+
+
+async def _send_digest_now(rig: Rig, conn, cfg: config.Config, user_id: str) -> list[str]:
+    """Déclenche le résumé du jour et rend les textes réellement envoyés."""
+    user = db.get_user(conn, user_id)
+    assert user is not None
+    before = len(rig.fake.sent)
+    await bot_main._send_digest(rig.app, conn, cfg, user)
+    return rig.fake.since(before, CHAT)
+
+
+def test_digest_fait_coche_le_devoir_affiche(cfg, conn, pronote, llm_fake, make_user):
+    """Le numéro affiché dans le résumé doit être celui que /fait résout.
+
+    Avant le correctif, `list_ref` datait d'une liste plus ancienne : /fait 6
+    cochait un autre devoir que la ligne 6 du résumé.
+    """
+    user_id = make_user(chat_id=CHAT)
+    en_retard = [
+        devoir("Mathématiques", "DM n°4 : suite arithmétique.", TODAY - timedelta(days=9)),
+        devoir("Histoire-Géographie", "Fiche de lecture sur la Révolution.", TODAY - timedelta(days=7)),
+        devoir("SVT", "Schéma de la cellule à légender.", TODAY - timedelta(days=5)),
+        devoir("Physique-Chimie", "Exercices 12 à 18 page 57.", TODAY - timedelta(days=3)),
+        devoir("Anglais", "Apprendre le vocabulaire de la leçon 3.", TODAY - timedelta(days=1)),
+    ]
+    du_jour = devoir("Espagnol", "Relire le texte sur Barcelone.", TODAY)
+    db.replace_items(conn, user_id, [*en_retard, du_jour])
+    # Liste plus ancienne, dans un autre ordre : le résumé doit la remplacer.
+    db.write_list_ref(conn, user_id, [du_jour.key, *(it.key for it in reversed(en_retard))])
+    assert db.resolve_list_ref(conn, user_id, 6) == en_retard[0].key  # Maths, pas Espagnol
+
+    async def scenario(rig):
+        seen["digest"] = await _send_digest_now(rig, conn, cfg, user_id)
+        seen["fait"] = await rig.text("/fait 6")
+
+    seen: dict[str, list[str]] = {}
+    run_flow(cfg, conn, scenario)
+
+    assert len(seen["digest"]) == 1, "le résumé doit tenir en un seul message"
+    texte = seen["digest"][0]
+    lignes = _numbered_lines(texte)
+    assert [num for num, _ in lignes] == [1, 2, 3, 4, 5, 6]
+
+    attendu = [*en_retard, du_jour]  # ordre d'affichage : âge décroissant puis le jour même
+    for (num, ligne), item in zip(lignes, attendu):
+        assert item.title in ligne, f"ligne {num} : {ligne!r}"
+        assert db.resolve_list_ref(conn, user_id, num) == item.key, (
+            f"le numéro {num} affiché ne résout pas vers {item.title!r}"
+        )
+
+    assert seen["fait"] == ["✅"]
+    assert db.done_keys(conn, user_id) == {du_jour.key}
+    assert en_retard[0].key not in db.done_keys(conn, user_id)
+
+
+def _gros_devoirs() -> tuple[list[Item], list[Item]]:
+    """40 devoirs en retard + 8 du jour même (ordre d'affichage connu)."""
+    en_retard = [
+        devoir(
+            "Mathématiques",
+            f"Devoir {i:02d} : relire le chapitre et refaire les exercices corrigés.",
+            TODAY - timedelta(days=40 - i),
+        )
+        for i in range(40)
+    ]
+    du_jour = [
+        devoir("SVT", f"Devoir du jour {j}. " + ("relire " * (j + 1)).strip(), TODAY)
+        for j in range(8)
+    ]
+    return en_retard, du_jour
+
+
+def _actions_longues(monkeypatch, action: str) -> None:
+    """Force le chemin de troncature de `compose` : des actions très longues."""
+    monkeypatch.setattr(
+        llm,
+        "ensure_summaries",
+        lambda conn, items, cfg: {
+            item.key: {"summary": "résumé", "action": action, "effort": "moyen"}
+            for item in items
+        },
+    )
+
+
+LONG_ACTION = ("Refaire les exercices du chapitre et réviser la leçon. " * 9).strip()
+
+
+def test_digest_tronque_garde_une_numerotation_resolvable(
+    cfg, conn, pronote, llm_fake, make_user, monkeypatch
+):
+    """Résumé découpé par `compose` : chaque numéro envoyé résout au bon devoir.
+
+    Les actions sont volontairement longues (`LONG_ACTION`) : c'est le seul
+    moyen d'atteindre le plafond de 3500 caractères, donc la boucle qui retire
+    des lignes de la fin. Ce qui reste affiché doit rester numéroté juste.
+    """
+    user_id = make_user(chat_id=CHAT)
+    en_retard, du_jour = _gros_devoirs()
+    db.replace_items(conn, user_id, [*en_retard, *du_jour])
+    _actions_longues(monkeypatch, LONG_ACTION)
+    attendu = [*en_retard[:5], *du_jour]  # ordre du résumé : 5 plus urgents puis le jour même
+
+    async def scenario(rig):
+        seen["digest"] = await _send_digest_now(rig, conn, cfg, user_id)
+        lignes = _numbered_lines(seen["digest"][0])
+        seen["lignes"] = lignes
+        seen["fait"] = await rig.text(f"/fait {lignes[-1][0]}")
+
+    seen: dict[str, list] = {}
+    run_flow(cfg, conn, scenario)
+
+    assert len(seen["digest"]) == 1, "un seul message part, même tronqué"
+    texte = seen["digest"][0]
+    assert "— 40 en retard" in texte
+    lignes = seen["lignes"]
+    assert 1 < len(lignes) < 13, "la découpe doit avoir retiré des lignes"
+
+    assert [num for num, _ in lignes] == list(range(1, len(lignes) + 1))
+    for num, ligne in lignes:
+        key = db.resolve_list_ref(conn, user_id, num)
+        assert key is not None, f"le numéro {num} affiché ne résout vers rien"
+        assert key == attendu[num - 1].key, f"ligne {num} : {ligne!r} résout ailleurs"
+
+    # La dernière ligne gardée est un devoir du jour : la numérotation traverse
+    # la section « Pour aujourd'hui » sans décalage.
+    assert "Pour aujourd'hui" in texte
+    assert lignes[-1][1].endswith("· aujourd'hui")
+
+    # Rien n'est inventé au-delà de ce qui est affiché, et l'ordre est l'ordre de tri.
+    assert db.resolve_list_ref(conn, user_id, len(lignes) + 1) is None
+    assert seen["fait"] == ["✅"]
+    assert db.done_keys(conn, user_id) == {attendu[len(lignes) - 1].key}
+
+
+def test_digest_tronque_ne_laisse_pas_de_section_vide(
+    cfg, conn, pronote, llm_fake, make_user, monkeypatch
+):
+    """Défaut observé : à la troncature, l'en-tête de section survit seul.
+
+    `_send_digest` retire les lignes une par une depuis la fin ; l'en-tête
+    « Pour aujourd'hui » est une paire sans clé au milieu de `pairs`. Quand
+    toutes les lignes du jour sont tombées mais que le message tient déjà,
+    l'en-tête reste collé en fin de message et annonce une section vide.
+    Visible côté élève dès que les lignes sont assez longues pour dépasser
+    3500 caractères.
+    """
+    user_id = make_user(chat_id=CHAT)
+    en_retard, du_jour = _gros_devoirs()
+    db.replace_items(conn, user_id, [*en_retard, *du_jour])
+    _actions_longues(monkeypatch, LONG_ACTION + " " + LONG_ACTION[:90])
+
+    async def scenario(rig):
+        seen["digest"] = await _send_digest_now(rig, conn, cfg, user_id)
+
+    seen: dict[str, list] = {}
+    run_flow(cfg, conn, scenario)
+
+    lignes = seen["digest"][0].split("\n")
+    for pos, ligne in enumerate(lignes):
+        if "Pour aujourd'hui" in ligne:
+            assert any(re.match(r"^\d+\. ", suivante) for suivante in lignes[pos + 1 :]), (
+                "section « Pour aujourd'hui » vide"
+            )
