@@ -33,7 +33,7 @@ def encrypt(plain: str, secret: str) -> bytes:
 def decrypt(blob: bytes, secret: str) -> str:
     try:
         return _fernet(secret).decrypt(bytes(blob)).decode()
-    except InvalidToken as exc:
+    except (InvalidToken, TypeError, ValueError) as exc:
         raise SecretError(
             "impossible de déchiffrer : APP_SECRET a changé ou la donnée est corrompue"
         ) from exc

@@ -177,7 +177,11 @@ def now_iso() -> str:
 
 def connect(path: str | Path) -> sqlite3.Connection:
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    parent = path.parent
+    if not parent.exists():
+        raise RuntimeError(
+            f"Le répertoire de la base n'existe pas : {parent}"
+        )
     conn = sqlite3.connect(
         str(path), timeout=30, check_same_thread=False, factory=LockedConnection
     )
@@ -188,9 +192,46 @@ def connect(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+# Colonnes attendues dans `users` pour la migration idempotente.
+# L'ordre doit refléter le SCHEMA ci-dessus (définitions → défauts inclus).
+_USERS_COLUMNS: list[tuple[str, str, str | None]] = [
+    ("id", "TEXT PRIMARY KEY", None),
+    ("chat_id", "INTEGER NOT NULL UNIQUE", None),
+    ("pronote_url", "TEXT NOT NULL", None),
+    ("username", "TEXT NOT NULL", None),
+    ("app_uuid", "TEXT NOT NULL", None),
+    ("token_enc", "BLOB NOT NULL", None),
+    ("client_identifier", "TEXT", None),
+    ("account_pin_enc", "BLOB", None),
+    ("class_name", "TEXT", None),
+    ("created_at", "TEXT NOT NULL", None),
+    ("last_sync_at", "TEXT", None),
+    ("last_error", "TEXT", None),
+    ("sync_state", "TEXT NOT NULL DEFAULT 'idle'", None),
+    ("allow_password", "INTEGER NOT NULL DEFAULT 0", None),
+    ("include_messages", "INTEGER NOT NULL DEFAULT 1", None),
+    ("digest_hour", "INTEGER NOT NULL DEFAULT 18", None),
+    ("digest_day", "TEXT", None),
+    ("llm_day", "TEXT", None),
+    ("llm_count", "INTEGER NOT NULL DEFAULT 0", None),
+]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     with conn:
         conn.executescript(SCHEMA)
+        # Migration idempotente : complète `users` sur les bases existantes
+        # (SQLite ignore `ADD COLUMN` si la colonne est déjà là, mais on
+        # vérifie quand même via PRAGMA pour être sûr).
+        existing = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(users)")
+        }
+        for name, col_type, _default in _USERS_COLUMNS:
+            if name not in existing:
+                conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {name} {col_type}"
+                )
 
 
 # ─────────────────────────── identifiants ───────────────────────────
@@ -315,15 +356,16 @@ def reauth_user(
     fields = [
         "token_enc = ?",
         "app_uuid = ?",
-        "account_pin_enc = ?",
         "last_error = NULL",
         "sync_state = 'idle'",
     ]
     values: list[object] = [
         crypto.encrypt(creds["password"], secret),
         creds.get("uuid") or crypto.new_app_uuid(),
-        crypto.encrypt(account_pin, secret) if account_pin else None,
     ]
+    if account_pin:
+        fields.append("account_pin_enc = ?")
+        values.append(crypto.encrypt(account_pin, secret))
     if creds.get("client_identifier"):
         fields.append("client_identifier = ?")
         values.append(creds["client_identifier"])
@@ -565,15 +607,15 @@ def bump_llm_count(
     conn: sqlite3.Connection, user_id: str, day: str, limit: int
 ) -> bool:
     """Renvoie True si la question est autorisée (et la compte)."""
-    row = conn.execute(
-        "SELECT llm_day, llm_count FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    if row is None:
-        return False
-    count = row["llm_count"] if row["llm_day"] == day else 0
-    if count >= limit:
-        return False
     with conn:
+        row = conn.execute(
+            "SELECT llm_day, llm_count FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        count = row["llm_count"] if row["llm_day"] == day else 0
+        if count >= limit:
+            return False
         conn.execute(
             "UPDATE users SET llm_day = ?, llm_count = ? WHERE id = ?",
             (day, count + 1, user_id),

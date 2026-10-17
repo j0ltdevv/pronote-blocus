@@ -137,6 +137,44 @@ def _item(key: str) -> Item:
     )
 
 
+def test_reauth_user_preserves_account_pin(conn, secret, make_user):
+    """`reauth_user` sans `account_pin` doit conserver le PIN existant."""
+    uid = make_user(password="ancien-jeton")
+    db.save_credentials(
+        conn, uid, {"password": "jeton-2", "account_pin": "9876"}, secret
+    )
+    assert db.credentials_for(conn, uid, secret)["account_pin"] == "9876"
+
+    db.reauth_user(
+        conn,
+        uid,
+        creds={"password": "jeton-3", "client_identifier": "ident-2", "uuid": "uuid-nouveau"},
+        secret=secret,
+    )
+
+    creds = db.credentials_for(conn, uid, secret)
+    assert creds["password"] == "jeton-3"
+    assert creds["account_pin"] == "9876", "reauth_user a effacé le PIN"
+    assert creds["client_identifier"] == "ident-2"
+
+
+def test_reauth_user_can_update_account_pin(conn, secret, make_user):
+    """Passe un nouveau `account_pin` : il remplace l'ancien."""
+    uid = make_user(password="ancien-jeton")
+    db.save_credentials(
+        conn, uid, {"password": "jeton-2", "account_pin": "9876"}, secret
+    )
+    db.reauth_user(
+        conn,
+        uid,
+        creds={"password": "jeton-3"},
+        secret=secret,
+        account_pin="0000",
+    )
+    row = db.get_user(conn, uid)
+    assert crypto.decrypt(row["account_pin_enc"], secret) == "0000"
+
+
 def test_delete_user_removes_every_trace(conn, secret, make_user):
     uid = make_user()
     survivor = make_user()

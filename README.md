@@ -46,6 +46,7 @@ avec `/mdp <chat_id>` (le mot de passe n'est jamais journalisé).
 | `/refresh` | resynchronise (au plus toutes les 10 minutes) |
 | `/priorites` | refait la liste des matières prioritaires |
 | `/supprimer` | efface le compte et toutes ses données (deux fois de suite) |
+| `/annuler` | annule le parcours de connexion en cours |
 | `/qui`, `/mdp <chat_id>` | admin seulement |
 
 Un texte qui n'est pas une commande est une question libre, répondue

@@ -63,8 +63,8 @@ def _int_or_none(value: str | None) -> int | None:
         return None
     try:
         return int(value.strip())
-    except ValueError:
-        return None
+    except ValueError as exc:
+        raise RuntimeError(f"ADMIN_CHAT_ID invalide (entier attendu) : {value!r}") from exc
 
 
 def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -> Config:
@@ -83,11 +83,21 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             '"from cryptography.fernet import Fernet; '
             'print(Fernet.generate_key().decode())"'
         )
+    if require_token and secret:
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(secret.encode() if isinstance(secret, str) else secret)
+        except Exception as exc:
+            raise RuntimeError(f"APP_SECRET invalide (clé Fernet attendue) : {exc}") from exc
     data_dir = Path(get("DATA_DIR", "data")).expanduser()
     window_start = get("WINDOW_START", "2026-10-01")
     # Valide tôt : une date mal formée doit casser au démarrage, pas à la
     # première synchro d'un élève.
-    date.fromisoformat(window_start)
+    try:
+        date.fromisoformat(window_start)
+    except ValueError as exc:
+        raise RuntimeError(f"WINDOW_START invalide (AAAA-MM-JJ attendu) : {window_start!r}") from exc
     try:
         concurrency = max(1, int(get("MAX_CONCURRENT_SYNCS", "4")))
     except ValueError:
@@ -102,7 +112,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
         llm_base_url=get("LLM_BASE_URL").rstrip("/"),
         llm_api_key=get("LLM_API_KEY"),
         llm_model=get("LLM_MODEL"),
-        llm_messages=get("LLM_MESSAGES", "1") not in ("0", "false", "no", ""),
+        llm_messages=get("LLM_MESSAGES", "1").lower() not in ("0", "false", "no", ""),
         max_concurrent_syncs=concurrency,
         db_path=data_dir / "app.db",
         data_dir=data_dir,

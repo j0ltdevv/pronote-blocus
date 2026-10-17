@@ -9,8 +9,11 @@ se figerait sur du dégradé.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Iterable, Sequence
+
+log = logging.getLogger(__name__)
 
 import httpx
 
@@ -86,7 +89,8 @@ def _chat(
         response.raise_for_status()
         data = response.json()
         content = data["choices"][0]["message"]["content"]
-    except Exception:  # httpx.HTTPError, timeout, JSON cassé, forme inattendue…
+    except Exception as exc:  # httpx.HTTPError, timeout, JSON cassé, forme inattendue…
+        log.warning("appel LLM échoué : %s", exc)
         return None
     if not isinstance(content, str) or not content.strip():
         return None
@@ -265,11 +269,11 @@ def _extract_once(subject: str, content: str, cfg: Config) -> tuple[dict | None,
         return None, True
     match = _OBJET.search(stripped)
     if not match:
-        return None, True
+        return None, False
     try:
         data = json.loads(match.group(0))
     except ValueError:
-        return None, True
+        return None, False
     if not isinstance(data, dict):
         return None, True
     detail = data.get("detail")

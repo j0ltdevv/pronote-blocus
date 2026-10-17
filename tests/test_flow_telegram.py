@@ -180,6 +180,9 @@ def cfg(secret, tmp_path) -> config.Config:
             "DATA_DIR": str(tmp_path / "data"),
             "WINDOW_START": "2026-10-01",
             "ADMIN_CHAT_ID": "999999",
+            "LLM_BASE_URL": "http://127.0.0.1:9/v1",
+            "LLM_API_KEY": "cle-de-test",
+            "LLM_MODEL": "modele-de-test",
         }
     )
 

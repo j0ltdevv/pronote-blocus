@@ -787,10 +787,12 @@ async def _password_message(
         )
     except Exception:
         log.info("connexion par mot de passe refusée pour chat %s", chat_id)
+        _cache(context, "pw_user").pop(chat_id, None)
+        flows[chat_id] = "user"
         await context.bot.send_message(
             chat_id,
-            "Identifiant ou mot de passe refusé. Vérifie et renvoie ton "
-            "identifiant, ou demande un QR à l'admin.",
+            "Identifiant ou mot de passe refusé. Renvoie ton identifiant PRONOTE, "
+            "ou demande un QR à l'admin.",
         )
         return
 
@@ -937,6 +939,8 @@ def mentioned_subjects(question: str, subjects: list[str]) -> list[str]:
 async def _data_block(conn, user_id: str, cfg: config.Config, question: str) -> str:
     items, overdue, upcoming = await _load_rows(conn, user_id, cfg)
     rows = list(overdue) + list(upcoming)
+    if not cfg.llm_messages:
+        rows = [row for row in rows if getattr(row.item, "source", "") != "messagerie"]
     asked = mentioned_subjects(question, sorted({row.item.subject for row in rows}))
     if asked and len(asked) <= 3:
         rows = [row for row in rows if row.item.subject in asked]
@@ -947,7 +951,7 @@ async def _data_block(conn, user_id: str, cfg: config.Config, question: str) -> 
         for row in rows
     ]
     q = question.casefold()
-    if any(mot in q for mot in ("cours", "rattraper", "résume", "resume")):
+    if cfg.llm_messages and any(mot in q for mot in ("cours", "rattraper", "résume", "resume")):
         cours = [i for i in items if i.kind == "cours"]
         cours.sort(key=lambda i: i.due_date or date.min, reverse=True)
         lines.append("COURS:")
@@ -963,6 +967,28 @@ async def _chat_answer(
     conn, cfg = _conn(context), _cfg(context)
     chat_id = update.effective_chat.id
     question = (update.message.text or "").strip()
+    if not cfg.llm_enabled:
+        # Pas de LLM : pas de quota consommé, on tombe directement sur la liste.
+        _, overdue, upcoming = await _load_rows(conn, user["id"], cfg)
+        rows = list(overdue) + list(upcoming)
+        asked = mentioned_subjects(question, sorted({row.item.subject for row in rows}))
+        if asked and len(asked) <= 3:
+            rows = [row for row in rows if row.item.subject in asked]
+        rows = rows[:3]
+        if not rows:
+            await update.message.reply_text(
+                "Je n'ai pas pu réfléchir, et je n'ai aucun devoir en base. "
+                "Envoie /refresh."
+            )
+            return
+        lines = render.numbered_lines(rows, config.today())
+        await _reply_html(
+            update,
+            "Je n'ai pas pu réfléchir, voilà ta liste :",
+            lines,
+            "/retard pour tout voir",
+        )
+        return
     if not db.bump_llm_count(conn, user["id"], config.today().isoformat(), 10):
         await update.message.reply_text(MSG_QUOTA)
         return

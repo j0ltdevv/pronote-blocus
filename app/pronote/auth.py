@@ -82,6 +82,17 @@ def parse_qr_text(text: str) -> dict:
     missing = [k for k in ("login", "jeton", "url") if not payload.get(k)]
     if missing:
         raise QrNotPronote()
+    url = str(payload["url"])
+    # Validation minimale anti-SSRF : schéma http(s), hôte non vide, pas de
+    # localhost ni d'IP privée. PRONOTE est toujours servi en HTTPS.
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise QrNotPronote()
+    host = parts.hostname or ""
+    if host in ("localhost", "127.0.0.1", "::1") or host.startswith("192.168.") or host.startswith("10.") or host.startswith("172."):
+        raise QrNotPronote()
     return {k: str(payload[k]) for k in ("login", "jeton", "url")}
 
 

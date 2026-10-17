@@ -281,7 +281,9 @@ def _extract(conn: Any, subject: str, body: str, cfg: Config) -> dict | None:
     if not (cfg.llm_messages and cfg.llm_enabled and body.strip()):
         return None
 
-    cache_key = hashlib.sha256(f"{subject}|{body}".encode("utf-8")).hexdigest()
+    cache_key = hashlib.sha256(
+        json.dumps([subject, body], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     cached = db.get_summaries(conn, [cache_key], EXTRACT_MODEL).get(cache_key)
     if cached is not None:
         try:
