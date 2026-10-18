@@ -52,67 +52,62 @@
 
       <div id="notice" class="notice hidden" role="alert"></div>
 
-      <!-- Connexion : QR -->
+      <!-- Connexion -->
       <section id="authQr" class="panel panel-auth hidden">
-        <p class="eyebrow">Étape 1 sur 2</p>
+        <p class="eyebrow">Connexion</p>
         <h2>Connecte ton compte PRONOTE</h2>
-        <p class="subline">Lecture seule. Aucun mot de passe demandé en mode QR.</p>
+        <p class="subline">Choisis la façon la plus simple pour toi. Lecture seule.</p>
 
-        <details class="how" open>
-          <summary>Comment récupérer le QR code</summary>
-          <ol class="steps">
-            <li>Dans PRONOTE (Espace Élève), ouvre le <strong>bandeau du haut → QR code</strong> (passe en “version ordinateur” sur téléphone).</li>
-            <li>Choisis un <strong>code à 4 chiffres</strong> → Générer.</li>
-            <li>Fais une <strong>capture d'écran</strong> du QR et reviens ici.</li>
-          </ol>
-          <p class="hint">Procédure officielle : <a href="https://docs.index-education.com/docs_fr/fr-pronote-support-fiche-957-3557-configurer-l-application-mobile.php" target="_blank" rel="noopener">doc Index Éducation</a>.</p>
-        </details>
+        <div class="auth-switch" role="tablist" aria-label="Mode de connexion">
+          <button id="tabPwd" class="auth-tab active" role="tab" aria-selected="true" data-tab="pwd">Identifiants</button>
+          <button id="tabQr" class="auth-tab" role="tab" aria-selected="false" data-tab="qr">QR code</button>
+        </div>
 
-        <details class="how">
-          <summary>Confidentialité</summary>
-          <ul class="check-list">
-            <li>Lecture seule : rien n'est coché ni marqué comme lu dans PRONOTE.</li>
-            <li>Ton jeton est chiffré, ton code à 4 chiffres est oublié après usage.</li>
-            <li>Déconnexion = suppression du compte côté serveur.</li>
-          </ul>
-          <p class="hint">Aucune donnée n'est partagée ou revendue. Capture lue uniquement sur ce serveur.</p>
-        </details>
-
-        <p class="paste-hint" id="qrHint">
-          <strong>Sur téléphone :</strong> fais la capture d'écran du QR, reviens ici,
-          puis touche <strong>« Choisir une capture »</strong> et prends la photo dans tes
-          captures d'écran.
-        </p>
-        <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture envoyée" hidden>
-        <button id="qrBtn" class="open-doc primary-action" type="button">Choisir une capture →</button>
-        <input id="qrFile" type="file" accept="image/*" class="hidden">
-        <p class="status" id="qrStatus"></p>
-
-        <details class="how" id="noPcBlock">
-          <summary>Pas d'ordinateur sous la main ? Se connecter avec ses identifiants</summary>
-          <p class="hint">
-            PRONOTE n'affiche le QR que sur la version ordinateur. Sans ordinateur,
-            tu peux te connecter directement avec l'identifiant et le mot de passe
-            que ton établissement t'a donnés.
-          </p>
+        <!-- Mode identifiants : 2 champs -->
+        <div id="pwdTab">
           <form id="pwdForm" class="pwd-form">
-            <label for="pwdUrl">Adresse PRONOTE</label>
-            <input id="pwdUrl" type="url" placeholder="préremplie par l'établissement">
-            <label for="pwdEnt">Ton ENT (si ton lycée en a un)</label>
-            <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
-            <label for="pwdUser">Identifiant</label>
-            <input id="pwdUser" type="text" required autocomplete="username">
+            <label for="pwdUser">Identifiant PRONOTE</label>
+            <input id="pwdUser" type="text" required autocomplete="username" placeholder="ex. p.dupont">
             <label for="pwdPass">Mot de passe</label>
-            <input id="pwdPass" type="password" required autocomplete="current-password">
-            <button id="pwdBtn" type="submit" class="open-doc primary-action">Se connecter →</button>
+            <input id="pwdPass" type="password" required autocomplete="current-password" placeholder="••••••••">
+            <button id="pwdBtn" type="submit" class="primary-action">Se connecter →</button>
             <p class="status" id="pwdStatus" role="status" aria-live="polite"></p>
+            <p class="hint">Même identifiants que PRONOTE. Chiffré en base, effacé à la déconnexion.</p>
           </form>
-          <p class="hint">
-            Ton mot de passe est <strong>chiffré en base</strong> : PRONOTE en a besoin
-            pour renouveler la session, donc il est conservé — jamais en clair, jamais
-            dans un journal. La déconnexion supprime le compte et ce mot de passe.
-          </p>
-        </details>
+          <details class="how" id="pwdAdvanced">
+            <summary>Mon lycée n'est pas trouvé ?</summary>
+            <p class="hint">Par défaut ton lycée est déjà prérempli. Change seulement si on te le demande.</p>
+            <label for="pwdUrl">Adresse PRONOTE</label>
+            <input id="pwdUrl" type="url" placeholder="https://...index-education.net/pronote/eleve.html">
+            <label for="pwdEnt">ENT</label>
+            <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
+          </details>
+        </div>
+
+        <!-- Mode QR -->
+        <div id="qrTab" class="hidden">
+          <p class="paste-hint" id="qrHint">Colle ta capture (Ctrl+V) ou choisis-la ci-dessous.</p>
+          <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture envoyée" hidden>
+          <button id="qrBtn" class="primary-action" type="button">Choisir une capture →</button>
+          <input id="qrFile" type="file" accept="image/*" class="hidden">
+          <p class="status" id="qrStatus"></p>
+          <details class="how" open>
+            <summary>Où trouver le QR ?</summary>
+            <ol class="steps">
+              <li>PRONOTE → bandeau du haut → <strong>QR code</strong> (passe en “version ordinateur” sur téléphone).</li>
+              <li>Code à 4 chiffres → Générer → <strong>capture d'écran</strong>.</li>
+              <li>Reviens ici et envoie la capture.</li>
+            </ol>
+          </details>
+          <details class="how">
+            <summary>Confidentialité</summary>
+            <ul class="check-list">
+              <li>Lecture seule, rien n'est marqué comme lu.</li>
+              <li>Jeton chiffré, code à 4 chiffres oublié après usage.</li>
+              <li>Déconnexion = suppression.</li>
+            </ul>
+          </details>
+        </div>
       </section>
 
       <!-- Connexion : PIN -->

@@ -169,6 +169,12 @@ button{font:inherit}
 }
 .panel-auth.is-dragover{outline:2px dashed var(--green); outline-offset:3px}
 
+/* auth tabs */
+.auth-switch{display:flex; gap:4px; background:var(--bg); border:1px solid var(--line); padding:4px; border-radius:999px; width:fit-content; margin:14px 0}
+.auth-tab{border:0; background:transparent; padding:8px 14px; border-radius:999px; font:700 12px/1 ui-sans-system; color:var(--muted); cursor:pointer}
+.auth-tab.active{background:var(--text); color:#fff}
+#qrTab, #pwdTab{margin-top:12px}
+
 /* forms */
 .pin-form{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px}
 .pin-form input{
