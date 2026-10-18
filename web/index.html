@@ -59,53 +59,47 @@
         <p class="subline">Choisis la façon la plus simple pour toi. Lecture seule.</p>
 
         <div class="auth-switch" role="tablist" aria-label="Mode de connexion">
-          <button id="tabPwd" class="auth-tab active" role="tab" aria-selected="true" data-tab="pwd">Identifiants</button>
-          <button id="tabQr" class="auth-tab" role="tab" aria-selected="false" data-tab="qr">QR code</button>
+          <button id="tabQr" class="auth-tab active" role="tab" aria-selected="true" data-tab="qr">QR code — conseillé</button>
+          <button id="tabPwd" class="auth-tab" role="tab" aria-selected="false" data-tab="pwd">Identifiants</button>
         </div>
 
-        <!-- Mode identifiants : 2 champs -->
-        <div id="pwdTab">
-          <form id="pwdForm" class="pwd-form">
-            <label for="pwdUser">Identifiant PRONOTE</label>
-            <input id="pwdUser" type="text" required autocomplete="username" placeholder="ex. p.dupont">
-            <label for="pwdPass">Mot de passe</label>
-            <input id="pwdPass" type="password" required autocomplete="current-password" placeholder="••••••••">
-            <button id="pwdBtn" type="submit" class="primary-action">Se connecter →</button>
-            <p class="status" id="pwdStatus" role="status" aria-live="polite"></p>
-            <p class="hint">Même identifiants que PRONOTE. Chiffré en base, effacé à la déconnexion.</p>
-          </form>
-          <details class="how" id="pwdAdvanced">
-            <summary>Mon lycée n'est pas trouvé ?</summary>
-            <p class="hint">Par défaut ton lycée est déjà prérempli. Change seulement si on te le demande.</p>
-            <label for="pwdUrl">Adresse PRONOTE</label>
-            <input id="pwdUrl" type="url" placeholder="https://...index-education.net/pronote/eleve.html">
-            <label for="pwdEnt">ENT</label>
-            <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
-          </details>
-        </div>
-
-        <!-- Mode QR -->
-        <div id="qrTab" class="hidden">
-          <p class="paste-hint" id="qrHint">Colle ta capture (Ctrl+V) ou choisis-la ci-dessous.</p>
-          <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture envoyée" hidden>
-          <button id="qrBtn" class="primary-action" type="button">Choisir une capture →</button>
+        <!-- Mode QR (par defaut, rassurant) -->
+        <div id="qrTab">
+          <p class="paste-hint" id="qrHint">Tu restes avec ton mot de passe PRONOTE. Le QR ne le contient pas.</p>
+          <div class="qr-zone">
+            <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture" hidden>
+            <button id="qrBtn" class="primary-action" type="button">Choisir une capture →</button>
+            <span class="qr-or">ou colle avec Ctrl+V</span>
+          </div>
           <input id="qrFile" type="file" accept="image/*" class="hidden">
           <p class="status" id="qrStatus"></p>
           <details class="how" open>
             <summary>Où trouver le QR ?</summary>
             <ol class="steps">
-              <li>PRONOTE → bandeau du haut → <strong>QR code</strong> (passe en “version ordinateur” sur téléphone).</li>
-              <li>Code à 4 chiffres → Générer → <strong>capture d'écran</strong>.</li>
+              <li>PRONOTE → bandeau du haut → <strong>QR code</strong> (sur téléphone : “version ordinateur”).</li>
+              <li>Choisis un <strong>code à 4 chiffres</strong> → Générer → <strong>capture d'écran</strong>.</li>
               <li>Reviens ici et envoie la capture.</li>
             </ol>
           </details>
-          <details class="how">
-            <summary>Confidentialité</summary>
-            <ul class="check-list">
-              <li>Lecture seule, rien n'est marqué comme lu.</li>
-              <li>Jeton chiffré, code à 4 chiffres oublié après usage.</li>
-              <li>Déconnexion = suppression.</li>
-            </ul>
+        </div>
+
+        <!-- Mode identifiants : repli -->
+        <div id="pwdTab" class="hidden">
+          <p class="hint">Sans ordi : utilise tes identifiants PRONOTE habituels. Chiffré, effacé à la déconnexion.</p>
+          <form id="pwdForm" class="pwd-form">
+            <label for="pwdUser">Identifiant PRONOTE</label>
+            <input id="pwdUser" type="text" autocomplete="username" placeholder="ex. p.dupont">
+            <label for="pwdPass">Mot de passe</label>
+            <input id="pwdPass" type="password" autocomplete="current-password" placeholder="••••••••">
+            <button id="pwdBtn" type="submit" class="primary-action">Se connecter →</button>
+            <p class="status" id="pwdStatus" role="status" aria-live="polite"></p>
+          </form>
+          <details class="how" id="pwdAdvanced">
+            <summary>Mon lycée n'est pas trouvé ?</summary>
+            <label for="pwdUrl">Adresse PRONOTE</label>
+            <input id="pwdUrl" type="url" placeholder="https://...index-education.net/pronote/eleve.html">
+            <label for="pwdEnt">ENT</label>
+            <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
           </details>
         </div>
       </section>
