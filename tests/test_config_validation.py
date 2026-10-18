@@ -62,11 +62,19 @@ def test_secret_blanc_est_manquant():
         config.from_env(_env(APP_SECRET="   "))
 
 
-def test_require_token_false_accepte_un_environnement_vide():
-    cfg = config.from_env({}, require_token=False)
+def test_require_token_false_accepte_un_environnement_vide(tmp_path):
+    # Zéro-config : sans APP_SECRET, le mode web génère une clé et la
+    # persiste dans DATA_DIR/app_secret. Le test isole DATA_DIR pour ne pas
+    # polluer le dépôt et vérifie que la clé est une vraie Fernet.
+    cfg = config.from_env({"DATA_DIR": str(tmp_path / "data")}, require_token=False)
     assert cfg.telegram_token == ""
-    assert cfg.app_secret == ""
+    assert cfg.app_secret != ""
+    # doit être une clé Fernet valide
+    Fernet(cfg.app_secret.encode())
     assert cfg.window_start == "2026-10-01"
+    # second appel = même clé réutilisée depuis le fichier
+    cfg2 = config.from_env({"DATA_DIR": str(tmp_path / "data")}, require_token=False)
+    assert cfg2.app_secret == cfg.app_secret
 
 
 def test_secret_fernet_valide_conserve_la_cle():
