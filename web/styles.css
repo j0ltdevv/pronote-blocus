@@ -279,6 +279,23 @@ body.is-guest .docs-hero{border-bottom:0}
   .content{padding:20px 22px}
   .docs-hero h1{font-size:26px}
 }
+.mobile-filters{display:none}
+@media(max-width:640px){
+  .mobile-filters{
+    display:flex; gap:8px; overflow:auto; -webkit-overflow-scrolling:touch;
+    padding:10px 0 12px; margin:0 -14px; padding-left:14px; padding-right:14px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; background:var(--bg);
+  }
+  .mobile-filters.hidden{display:none !important}
+  .mf{
+    flex:0 0 auto; display:inline-flex; align-items:center; gap:6px;
+    padding:8px 12px; border-radius:999px; border:1px solid var(--line); background:var(--surface);
+    font:600 12px/1 ui-sans-system; color:var(--text); white-space:nowrap;
+  }
+  .mf em{font-style:normal; background:var(--bg); border-radius:999px; padding:2px 6px; font-size:11px; color:var(--muted)}
+  .mf.active{background:var(--text); color:#fff; border-color:var(--text)}
+  .mf.active em{background:rgba(255,255,255,.18); color:#fff}
+}
 @media(max-width:640px){
   .sidebar{
     display:flex; position:fixed; inset:0 auto 0 0; z-index:70;
