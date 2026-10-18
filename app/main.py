@@ -67,6 +67,7 @@ MSG_CODE = "Ça doit être exactement 4 chiffres."
 MSG_INDEX = "ce numéro n'est plus valide, renvoie /retard"
 MSG_QUOTA = "tu as posé 10 questions aujourd'hui, reviens demain"
 MSG_CONNEXION = "Envoie /start pour connecter ton compte PRONOTE."
+MSG_ANNULER = "Rien à annuler : aucune connexion en cours. /start pour te connecter."
 
 _QUATRE_CHIFFRES = re.compile(r"\d{4}")
 _ENTIERS = re.compile(r"\d+")
@@ -128,6 +129,19 @@ async def _note_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         _cache(context, "last_seen")[update.effective_chat.id] = datetime.now(
             timezone.utc
         )
+
+
+def _item_exists(conn, user_id: str, key: str) -> bool:
+    """La clé doit exister dans `items` avant tout marquage.
+
+    `list_ref` survit à une synchro : une référence peut pointer sur un devoir
+    disparu. Marquer une clé absente écrivait un `done_local` fantôme (jamais
+    purgé, puisqu'aucun item ne reviendrait le réclamer).
+    """
+    row = conn.execute(
+        "SELECT 1 FROM items WHERE user_id = ? AND key = ?", (user_id, key)
+    ).fetchone()
+    return row is not None
 
 
 def _seen_recently(application: Application, chat_id: int, hours: int = 24) -> bool:
@@ -257,8 +271,10 @@ async def qr_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return QR
     try:
         data = bytes(await file.download_as_bytearray())
-    except Exception:
-        log.exception("téléchargement de la photo impossible")
+    except Exception as exc:
+        # Le message d'une erreur HTTP Telegram contient l'URL complète
+        # (`…/file/bot<JETON>/…`) : seul le type est journalisé.
+        log.warning("téléchargement de la photo impossible (%s)", type(exc).__name__)
         await message.reply_text(MSG_FLOU)
         return QR
     try:
@@ -322,8 +338,10 @@ async def pin_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     except auth.QrExpired as exc:
         await update.message.reply_text(exc.message)
         return QR
-    except Exception:
-        log.exception("connexion par QR refusée")
+    except Exception as exc:
+        # `pronotepy` et l'API Telegram mettent l'URL (et donc le jeton) dans le
+        # message : on ne journalise que le type d'erreur.
+        log.warning("connexion par QR refusée (%s)", type(exc).__name__)
         await update.message.reply_text(MSG_EXPIRE)
         return QR
     return await _finish_login(
@@ -346,8 +364,8 @@ async def account_pin_received(
         client, creds = await asyncio.to_thread(
             auth.login_with_qr, qr, _cache(context, "pin_code").get(chat_id, ""), app_uuid, code
         )
-    except Exception:
-        log.exception("connexion avec code PIN refusée")
+    except Exception as exc:
+        log.warning("connexion avec code PIN refusée (%s)", type(exc).__name__)
         await update.message.reply_text(
             "Le code PIN n'a pas marché. Régénère un QR dans PRONOTE et "
             "renvoie-le avec /start."
@@ -358,7 +376,15 @@ async def account_pin_received(
 
 
 def _reset_flow(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
-    for name in ("qr_cache", "pending_uuid", "mfa_tries", "subjects", "pin_code"):
+    for name in (
+        "qr_cache",
+        "pending_uuid",
+        "mfa_tries",
+        "subjects",
+        "pin_code",
+        "pw_flow",
+        "pw_user",
+    ):
         _cache(context, name).pop(chat_id, None)
 
 
@@ -472,10 +498,49 @@ async def matieres_received(
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _reset_flow(context, update.effective_chat.id)
+    user = _user_of(update, context)
+    if user is not None and user["allow_password"]:
+        conn = _conn(context)
+        with conn:
+            conn.execute("UPDATE users SET allow_password = 0 WHERE id = ?", (user["id"],))
     await update.message.reply_text(
         "Annulé. Envoie /start quand tu veux reprendre la connexion."
     )
     return ConversationHandler.END
+
+
+async def annuler_hors_parcours(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """`/annuler` reçu alors qu'aucune connexion n'est en cours.
+
+    Le `ConversationHandler` ne consomme `/annuler` que si CE chat a un
+    parcours actif (via son `fallback`) : sans handler global, la commande
+    restait totalement muette et l'élève croyait le bot en panne.
+
+    Le parcours mot de passe n'est PAS dans le `ConversationHandler` : c'est
+    ici qu'il faut vider son état, sinon l'élève reste coincé à qui on
+    redemande un mot de passe.
+    """
+    chat_id = update.effective_chat.id
+    _reset_flow(context, chat_id)
+    user = _user_of(update, context)
+    if user is not None and user["allow_password"]:
+        conn = _conn(context)
+        with conn:
+            conn.execute("UPDATE users SET allow_password = 0 WHERE id = ?", (user["id"],))
+    await update.message.reply_text(MSG_ANNULER)
+
+
+async def on_error(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Erreur non rattrapée : on journalise le TYPE, jamais le message.
+
+    `python-telegram-bot` interpole le jeton brut dans `InvalidToken`
+    (`telegram/_bot.py`), et les erreurs HTTP portent l'URL complète, jeton
+    compris. Le gestionnaire d'erreurs par défaut fait un `log.exception` :
+    brancher celui-ci empêche cette fuite.
+    """
+    log.error("erreur non rattrapée : %s", type(context.error).__name__)
 
 
 async def _cours_after_sync(application: Application, chat_id: int, user_id: str) -> None:
@@ -625,7 +690,7 @@ async def cmd_fait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     idx = int(context.args[0])
     conn = _conn(context)
     key = db.resolve_list_ref(conn, user["id"], idx)
-    if key is None:
+    if key is None or not _item_exists(conn, user["id"], key):
         await update.message.reply_text(MSG_INDEX)
         return
     db.mark_done(conn, user["id"], key)
@@ -682,7 +747,12 @@ async def cmd_supprimer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     chat_id = update.effective_chat.id
     purges = _cache(context, "purge")
     now = time.monotonic()
-    if now - purges.get(chat_id, 0.0) <= 60:
+    # La présence de la clé porte la confirmation, pas son absence : avec
+    # `get(chat_id, 0.0)`, `time.monotonic()` comparé à 0 revient à tester
+    # l'uptime du process, et une commande `/supprimer`.unique aux 60 premières
+    # secondes après un redémarrage effaçait le compte sans confirmation.
+    premiere = purges.get(chat_id)
+    if premiere is not None and now - premiere <= 60:
         db.delete_user(_conn(context), user["id"])
         purges.pop(chat_id, None)
         _reset_flow(context, chat_id)
@@ -786,7 +856,8 @@ async def _password_message(
             auth.login_with_password, url, username, text, app_uuid
         )
     except Exception:
-        log.info("connexion par mot de passe refusée pour chat %s", chat_id)
+        # `chat_id` est une donnée personnelle : le motif suffit au diagnostic.
+        log.info("connexion par mot de passe refusée")
         _cache(context, "pw_user").pop(chat_id, None)
         flows[chat_id] = "user"
         await context.bot.send_message(
@@ -812,6 +883,10 @@ async def _password_message(
             class_name=class_name,
         )
     subjects = await asyncio.to_thread(fetch.subjects_of, client, cfg)
+    with conn:
+        # La permission est à usage unique : sans cette remise à zéro, tout
+        # texte libre ultérieur repartirait dans le parcours mot de passe.
+        conn.execute("UPDATE users SET allow_password = 0 WHERE id = ?", (user_id,))
     await context.bot.send_message(chat_id, "Connecté.")
     if subjects:
         _cache(context, "prio_wait")[chat_id] = subjects
@@ -1037,6 +1112,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if user is None:
         await update.message.reply_text(MSG_CONNEXION)
         return
+    if chat_id not in flows and user["allow_password"]:
+        # Le flag est persisté en base : sans cette reprise, un redémarrage
+        # entre /mdp et la réponse de l'élève transformait son mot de passe
+        # en question libre et l'envoyait au LLM.
+        flows[chat_id] = "user"
+        await _password_message(update, context, "user")
+        return
     await _chat_answer(update, context, user)
 
 
@@ -1182,6 +1264,9 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
 
     handlers = [
         conversation,
+        # Hors parcours, le `ConversationHandler` rend la main (aucun état pour
+        # ce chat) : ce handler global répond au lieu de laisser `/annuler` muet.
+        CommandHandler("annuler", annuler_hors_parcours),
         CommandHandler("retard", cmd_retard),
         CommandHandler("aujourdhui", cmd_aujourdhui),
         CommandHandler("matiere", cmd_matiere),
@@ -1204,6 +1289,9 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, on_text), group=0
     )
+    # Remplace le gestionnaire par défaut, qui journalise le message des
+    # exceptions — jeton Telegram compris.
+    application.add_error_handler(on_error)
     return application
 
 

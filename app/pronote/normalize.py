@@ -9,6 +9,7 @@ ajouté à un devoir existant ne produirait aucune mise à jour.
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -39,13 +40,7 @@ def clean_text(raw: Any) -> str:
     """HTML → texte, espaces compactés, casse PRÉSERVÉE (affichage)."""
     if not raw:
         return ""
-    text = str(raw)
-    try:
-        from pronotepy.Util import html_parse  # type: ignore
-
-        text = html_parse(text)
-    except Exception:
-        text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", str(raw)))
     return _SPACES.sub(" ", text).strip()
 
 

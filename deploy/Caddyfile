@@ -1,0 +1,58 @@
+# Pronote Blocus — reverse proxy public (API web + PWA).
+#
+# Caddy gère le certificat TLS automatiquement (ACME/Let's Encrypt) dès que le
+# domaine pointe sur la machine et que les ports 80 et 443 sont ouverts.
+#
+# Installation : /etc/caddy/Caddyfile, puis `sudo systemctl reload caddy`.
+# Remplacer pronote.example.org par le domaine réel, et l'email ACME.
+# Le domaine DOIT être identique à WEB_ORIGIN dans /etc/pronote-blocus/pronote-web.env.
+{
+	# Contact ACME (expiration de certificat, compte Let's Encrypt).
+	email admin@example.org
+}
+
+pronote.example.org {
+	# Compression des assets statiques (les réponses JSON en profitent aussi).
+	encode gzip zstd
+
+	# Limite la taille du corps de requête. Le seul gros POST est l'upload du
+	# QR : une capture d'écran de téléphone (1–5 Mo) encodée en base64 (×1,33)
+	# tient largement dans 10 Mo ; au-delà, Caddy répond 413 avant d'atteindre
+	# FastAPI et d'allouer la mémoire.
+	request_body {
+		max_size 10MB
+	}
+
+	reverse_proxy 127.0.0.1:8000
+
+	header {
+		# HSTS : une fois vu, le navigateur ne repasse plus jamais en HTTP.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+
+		# CSP compatible PWA : tout est servi depuis l'origine ('self'), y
+		# compris le service worker (worker-src) et le manifeste. L'app shell
+		# (index.html, app.js, styles.css) n'utilise NI script NI style inline,
+		# donc pas de 'unsafe-inline'. `data:` est toléré pour les images
+		# générées localement (QR de secours), `frame-ancestors 'none'`
+		# interdit l'inclusion dans une iframe tierce.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+
+		# Masque la version du serveur amont.
+		-Server
+	}
+
+	# Exception : offline.html est une page de secours autonome dont le style
+	# et le script sont EN LIGNE (y compris un onclick=), mise en cache par le
+	# service worker. La CSP stricte la casserait ; on l'assouplit pour ce
+	# SEUL fichier. La page ne contient aucune donnée utilisateur et n'appelle
+	# aucune origine externe : le risque est nul. `defer` fait appliquer cette
+	# directive APRÈS la CSP globale du bloc précédent (elle-même différée à
+	# cause de `-Server`), et donc la remplace pour /offline.html.
+	header /offline.html {
+		defer
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
+}

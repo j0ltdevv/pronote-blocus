@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, Iterable, Sequence
 
 log = logging.getLogger(__name__)
@@ -24,8 +25,34 @@ from .pronote import dates
 
 BATCH_SIZE = 8
 EFFORTS = ("court", "moyen", "long")
+
 _FENCE = re.compile(r"^```(?:json)?|```$", re.M)
 _OBJET = re.compile(r"\{.*\}", re.S)
+
+# Circuit ouvert anti-panne : un LLM injoignable mémorise l'échec `DOWN_SECONDS`
+# secondes. Pendant ce laps, `_chat` rend `None` sans appeler le transport — ce
+# qui évite de refaire des timeouts de 15 s à chaque affichage (`/retard`,
+# synthèse, chat…) quand le serveur LLM est mort. Le repli local garantit
+# l'affichage ; rien n'est écrit dans `summaries` tant que le LLM est down.
+DOWN_SECONDS = 600
+_LLM_DOWN_UNTIL: float = 0.0
+
+
+def _is_down() -> bool:
+    """Vrai tant que le circuit ouvert n'a pas expiré."""
+    return time.monotonic() < _LLM_DOWN_UNTIL
+
+
+def _mark_down() -> None:
+    """Ouvre le circuit `DOWN_SECONDS` secondes après un échec du fournisseur."""
+    global _LLM_DOWN_UNTIL
+    _LLM_DOWN_UNTIL = time.monotonic() + DOWN_SECONDS
+
+
+def _reset_down() -> None:
+    """Referme le circuit (tests : l'état est un global de module)."""
+    global _LLM_DOWN_UNTIL
+    _LLM_DOWN_UNTIL = 0.0
 
 # Prompt d'extraction repris TEL QUEL du bot en production sur cet établissement.
 _EXTRACT_PROMPT = (
@@ -68,8 +95,18 @@ def _chat(
     timeout: float = 15,
     json_mode: bool = False,
 ) -> str | None:
-    """Un appel OpenAI-compatible. TOUTE erreur ⇒ None, jamais d'exception."""
+    """Un appel OpenAI-compatible. TOUTTE erreur ⇒ None, jamais d'exception.
+
+    Circuit ouvert : si le LLM a été marqué down (`_LLM_DOWN_UNTIL`), on sort
+    tôt sans appeler le transport. L'échec (timeout, connexion, JSON invalide,
+    `response_format` refusé) ouvre le circuit `DOWN_SECONDS` secondes : on ne
+    refait plus de requête pendant ce laps, ce qui évite les 15 s d'attente
+    répétée à chaque `/retard` tant que le serveur LLM est mort.
+    """
     if not cfg.llm_enabled:
+        return None
+    # Circuit ouvert : le LLM est connu comme injoignable, on ne tente pas.
+    if _is_down():
         return None
     payload: dict[str, Any] = {
         "model": cfg.llm_model,
@@ -92,6 +129,11 @@ def _chat(
         content = msg.get("content") or msg.get("reasoning_content")
     except Exception as exc:  # httpx.HTTPError, timeout, JSON cassé, forme inattendue…
         log.warning("appel LLM échoué : %s", exc)
+        # On mémorise l'échec : les clés en échec repartent dans le lot à chaque
+        # affichage tant qu'on ne circuit pas. 10 minutes suffisent au redémarrage
+        # d'un backend sans pénaliser l'affichage immédiat.
+        global _LLM_DOWN_UNTIL
+        _LLM_DOWN_UNTIL = time.monotonic() + DOWN_SECONDS
         return None
     if not isinstance(content, str) or not content.strip():
         return None
@@ -176,6 +218,7 @@ def _summarize_real(pairs: Sequence[tuple[str, str]], cfg: Config) -> dict[str, 
             json_mode=True,
         )
         if text is None:
+            _mark_down()
             continue
         data = _load_json(text)
         if isinstance(data, dict):
@@ -229,9 +272,13 @@ def ensure_summaries(conn, items: Iterable, cfg: Config) -> dict[str, dict]:
         if item.key in cached or item.key in seen:
             continue
         seen.add(item.key)
+        # LLM_MESSAGES=0 : le corps d'un message de prof ne sort JAMAIS de la
+        # machine, pas même pour un résumé. Le repli local suffit à l'afficher.
+        if not cfg.llm_messages and getattr(item, "source", "") == "messagerie":
+            continue
         todo.append((item.key, item.body))
 
-    if not todo or not cfg.llm_enabled:
+    if not todo or not cfg.llm_enabled or _is_down():
         return merged
 
     try:
@@ -348,7 +395,22 @@ def _row_line(row) -> str:
 def weekly_synthesis(rows: Sequence, cfg: Config) -> str | None:
     """5 lignes maximum ; None si le LLM est indisponible (le parent replie)."""
     rows = list(rows)
+    if not cfg.llm_messages:
+        # LLM_MESSAGES=0 : le corps d'un message de prof ne sort jamais de la
+        # machine, y compris via `row.summary` (qui vaut body[:140]).
+        rows = [r for r in rows if getattr(r.item, "source", "") != "messagerie"]
     if not rows or not cfg.llm_enabled:
+        return None
+    # LLM_MESSAGES=0 : le corps d'un message de prof ne sort JAMAIS du serveur.
+    # `_row_line` lit `row.summary`, qui sans résumé vaut `body[:140]` : un
+    # message non filtré enverrait le corps du prof au LLM. On l'interdit donc,
+    # comme `ensure_summaries` le fait pour la phase de résumé.
+    if not cfg.llm_messages:
+        rows = [r for r in rows if getattr(getattr(r, "item", r), "source", "") != "messagerie"]
+        if not rows:
+            return None
+    # Circuit ouvert : si le LLM est marqué down, on ne tente même pas.
+    if _is_down():
         return None
     text = _chat(
         cfg,

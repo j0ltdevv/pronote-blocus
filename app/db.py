@@ -445,7 +445,17 @@ def get_priorities(conn: sqlite3.Connection, user_id: str) -> dict[str, int]:
 
 
 def replace_items(conn: sqlite3.Connection, user_id: str, items: list) -> int:
-    """Réécrit les items d'un élève ; les `done_local` survivent."""
+    """Réécrit les items d'un élève ; les `done_local` survivent.
+
+    Les items des sources lues à chaque passe (travail à faire, informations,
+    messagerie) sont *purgés* : la clé d'un item est un hash de son contenu,
+    donc un devoir corrigé par le prof ou disparu de la fenêtre produirait
+    sinon une seconde ligne que l'élève ne verrait jamais se nettoyer.
+
+    Les items `cahier_de_textes` sont épargnés : la phase cours ne lit qu'un
+    lot de leçons et fusionne avec l'existant, purger sur `fetched_at` y
+    effacerait des cours simplement non relus cette fois-ci.
+    """
     import json
 
     stamp = now_iso()
@@ -472,6 +482,11 @@ def replace_items(conn: sqlite3.Connection, user_id: str, items: list) -> int:
                 )
                 for it in items
             ],
+        )
+        conn.execute(
+            "DELETE FROM items WHERE user_id = ? AND source <> 'cahier_de_textes'"
+            " AND fetched_at < ?",
+            (user_id, stamp),
         )
     return len(items)
 
@@ -565,7 +580,7 @@ def write_list_ref(conn: sqlite3.Connection, user_id: str, keys: list[str]) -> N
         conn.execute("DELETE FROM list_ref WHERE user_id = ?", (user_id,))
         conn.executemany(
             "INSERT INTO list_ref (user_id, idx, key, created_at) VALUES (?,?,?,?)",
-            [(user_id, i + 1, k, stamp) for i, k in enumerate(keys)][:60],
+            [(user_id, i + 1, k, stamp) for i, k in enumerate(keys)],
         )
 
 
@@ -606,14 +621,22 @@ def set_lesson_status(
 def bump_llm_count(
     conn: sqlite3.Connection, user_id: str, day: str, limit: int
 ) -> bool:
-    """Renvoie True si la question est autorisée (et la compte)."""
+    """Renvoie True si la question est autorisée (et la compte).
+
+    Un `day` strictement antérieur à `llm_day` stocké est refusé sans rien
+    écrire : un appel attardé au passage de minuit ne doit pas faire reculer la
+    date du compteur, ce qui rouvrirait le quota du jour courant.
+    """
     with conn:
         row = conn.execute(
             "SELECT llm_day, llm_count FROM users WHERE id = ?", (user_id,)
         ).fetchone()
         if row is None:
             return False
-        count = row["llm_count"] if row["llm_day"] == day else 0
+        stored_day = row["llm_day"]
+        if stored_day is not None and day < stored_day:
+            return False
+        count = row["llm_count"] if stored_day == day else 0
         if count >= limit:
             return False
         conn.execute(

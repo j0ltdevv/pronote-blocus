@@ -17,8 +17,21 @@ if str(ROOT) not in sys.path:
 from cryptography.fernet import Fernet  # noqa: E402
 
 from app import db  # noqa: E402
+from app import llm  # noqa: E402
 
 TODAY = "2026-10-17"
+
+
+@pytest.fixture(autouse=True)
+def _circuit_llm_ferme():
+    """Le circuit ouvert du LLM est un état global de module.
+
+    Sans remise à zéro, un test qui provoque un échec réseau laisse le
+    fournisseur « mort » 600 s et tous les tests suivants reçoivent `None`.
+    """
+    llm._reset_down()
+    yield
+    llm._reset_down()
 
 
 @pytest.fixture

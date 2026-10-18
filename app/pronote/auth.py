@@ -8,7 +8,9 @@ mobile (obligatoire pour `token_login`) et rendre des credentials prêts à
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
 from io import BytesIO
 from urllib.parse import urlsplit, urlunsplit
 
@@ -71,6 +73,80 @@ def mobile_url(url: str, query: str = DEFAULT_MOBILE_QUERY) -> str:
     return urlunsplit((parts.scheme, parts.netloc, "/".join(segments), q, ""))
 
 
+def _global_literal(host: str) -> bool | None:
+    """IP littérale → `is_global` ; `None` si `host` n'est pas une IP."""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        # `::ffff:127.0.0.1` doit être jugée comme l'IPv4 qu'elle transporte.
+        address = address.ipv4_mapped
+    return address.is_global
+
+
+def _looks_numeric(host: str) -> bool:
+    """`2130706433`, `0177.0.0.1`, `0x7f000001` : des IP déguisées, pas des noms."""
+    labels = host.lower().split(".")
+    return all(label.isdigit() or label.startswith("0x") for label in labels)
+
+
+def _resolved_addresses(host: str, port: int) -> list[str]:
+    """Adresses derrière `host`, telles que le résolveur système les rend."""
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    return [str(info[4][0]) for info in infos]
+
+
+def validate_pronote_url(url: str) -> str:
+    """URL PRONOTE exploitable côté serveur, ou `QrNotPronote`.
+
+    Le QR est une entrée non fiable et c'est `pronotepy` qui requête cette URL
+    DEPUIS le serveur : sans filtre, un QR suffit à faire lire les métadonnées
+    cloud (169.254.169.254) ou le réseau local. Trois règles :
+
+    1. HTTPS obligatoire (`http://` en clair livrerait le jeton mobile).
+    2. L'hôte est un nom DNS ou une IP littérale canonique. Les formes
+       déguisées (`2130706433`, `0177.0.0.1`, `0x7f000001`) sont refusées
+       AVANT toute résolution : on ne dépend pas du bon vouloir du résolveur.
+    3. TOUTES les adresses résolues doivent être `is_global` — loopback
+       (127.0.0.2), `0.0.0.0`, lien-local et ULA IPv6 (`fe80::1`, `fc00::1`),
+       IPv4-mappées (`::ffff:127.0.0.1`), plages privées et CGNAT comprises.
+
+    Résidu assumé : la résolution faite ici est refaite par `requests` au
+    moment de la requête, donc un DNS menteur peut changer d'avis entre les
+    deux (rebinding) ; et `pronotepy` crée son propre `requests.Session`
+    (`pronoteAPI.py`), qui suit les redirections sans repasser par ici.
+    Fermer ces deux trous demande de posséder le transport (session injectée
+    ou IP épinglée), ce que pronotepy n'expose pas.
+    """
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError as exc:  # port illisible (`:abc`, `:99999`), IPv6 non fermée
+        raise QrNotPronote() from exc
+    if parts.scheme != "https" or not parts.netloc or not host:
+        raise QrNotPronote()
+    if "@" in parts.netloc:
+        # `https://index-education.net@127.0.0.1/` : deux hôtes pour un lecteur
+        # humain, un seul pour `requests`.
+        raise QrNotPronote()
+    literal = _global_literal(host)
+    if literal is not None:
+        if not literal:
+            raise QrNotPronote()
+        return url
+    if _looks_numeric(host):
+        raise QrNotPronote()
+    try:
+        addresses = _resolved_addresses(host, port or 443)
+    except OSError as exc:  # nom inconnu, résolveur injoignable
+        raise QrNotPronote() from exc
+    if not addresses or any(not _global_literal(address) for address in addresses):
+        raise QrNotPronote()
+    return url
+
+
 def parse_qr_text(text: str) -> dict:
     """Texte du QR → dict PRONOTE. Lève `QrNotPronote` sinon."""
     try:
@@ -82,17 +158,8 @@ def parse_qr_text(text: str) -> dict:
     missing = [k for k in ("login", "jeton", "url") if not payload.get(k)]
     if missing:
         raise QrNotPronote()
-    url = str(payload["url"])
-    # Validation minimale anti-SSRF : schéma http(s), hôte non vide, pas de
-    # localhost ni d'IP privée. PRONOTE est toujours servi en HTTPS.
-    from urllib.parse import urlsplit
-
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise QrNotPronote()
-    host = parts.hostname or ""
-    if host in ("localhost", "127.0.0.1", "::1") or host.startswith("192.168.") or host.startswith("10.") or host.startswith("172."):
-        raise QrNotPronote()
+    # Le QR est une entrée non fiable : l'URL est requêtée depuis le serveur.
+    validate_pronote_url(str(payload["url"]))
     return {k: str(payload[k]) for k in ("login", "jeton", "url")}
 
 

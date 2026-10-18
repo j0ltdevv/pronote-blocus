@@ -1073,7 +1073,10 @@ def test_admin_active_mot_de_passe_et_connexion_sans_qr(
     assert len(calls) == 1
     assert calls[0][1:3] == ("mon-identifiant", "s3cret")
     row = db.get_user(conn, user_id)
-    assert row["allow_password"] == 1
+    # La permission est à usage unique : elle est consommée par la connexion
+    # réussie, sinon tout texte libre ultérieur repartirait dans le parcours
+    # mot de passe au lieu d'aller au LLM.
+    assert row["allow_password"] == 0
     assert crypto.decrypt(row["token_enc"], secret) == "motdepasse"
 
 

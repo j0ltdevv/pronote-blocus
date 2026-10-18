@@ -10,6 +10,7 @@ découpage vivent au même endroit.
 from __future__ import annotations
 
 import html
+import re
 from datetime import date
 
 from .pronote.normalize import Item
@@ -33,12 +34,45 @@ def esc(text: object) -> str:
     return html.escape(str(text), quote=False)
 
 
+_HTML_TOKEN = re.compile(
+    r"</?[A-Za-z][^<>]*>|&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);"
+)
+
+
+def _tag_name(tag: str) -> str:
+    """« </b> » → « b », « <a href=…> » → « a »."""
+    raw = tag[2:] if tag.startswith("</") else tag[1:]
+    return raw.strip().rstrip("/>").split()[0].lower()
+
+
+def _tokens(text: str):
+    """(genre, brut, nom) : texte, entité `&…;`, balise ouvrante/fermante."""
+    pos = 0
+    for match in _HTML_TOKEN.finditer(text):
+        if match.start() > pos:
+            yield "text", text[pos : match.start()], ""
+        raw = match.group()
+        if raw.startswith("&"):
+            yield "entity", raw, ""
+        elif raw.startswith("</"):
+            yield "close", raw, _tag_name(raw)
+        elif raw.endswith("/>"):
+            yield "self", raw, _tag_name(raw)
+        else:
+            yield "open", raw, _tag_name(raw)
+        pos = match.end()
+    if pos < len(text):
+        yield "text", text[pos:], ""
+
+
 def chunk(html: str, limit: int = MESSAGE_LIMIT) -> list[str]:
-    """Découpe un message en morceaux ≤ `limit`.
+    """Découpe un message en morceaux ≤ `limit` (balises comprises).
 
     Coupe sur les `\\n` quand c'est possible ; une ligne seule plus longue que
-    la largeur utile est coupée en tranches dures (borne garantie, aucune
-    boucle possible). Chaque morceau sauf le dernier finit par « … (suite) ».
+    la largeur utile est coupée en tranches dures. Une entité HTML
+    (`&amp;`) et une balise ne sont JAMAIS coupées : une balise restée
+    ouverte en fin de morceau est refermée, puis réouverte au morceau suivant.
+    Chaque morceau sauf le dernier finit par « … (suite) ».
     """
     text = str(html or "")
     if not text.strip():
@@ -49,30 +83,89 @@ def chunk(html: str, limit: int = MESSAGE_LIMIT) -> list[str]:
     suffix = SUITE if limit > len(SUITE) + 40 else ""
     width = max(1, limit - len(suffix))
 
-    blocks: list[str] = []
-    for line in text.split("\n"):
-        if len(line) <= width:
-            blocks.append(line)
-        else:
-            blocks.extend(line[i : i + width] for i in range(0, len(line), width))
-
     parts: list[str] = []
     current: list[str] = []
-    size = 0
-    for block in blocks:
-        extra = len(block) + (1 if current else 0)
-        if current and size + extra > width:
-            parts.append("\n".join(current))
-            current = [block]
-            size = len(block)
-        else:
-            current.append(block)
-            size += extra
-    if current:
-        parts.append("\n".join(current))
+    stack: list[tuple[str, str]] = []  # (nom, balise ouvrante à réouvrir)
+    size = 0  # caractères déjà pris dans le morceau courant
+    body = 0  # caractères de contenu depuis le dernier morceau
+
+    def close_cost() -> int:
+        return sum(len(name) + 3 for name, _ in stack)
+
+    def flush() -> None:
+        nonlocal current, size, body
+        if body:
+            content = "".join(current).rstrip("\n")
+            parts.append(content + "".join(f"</{name}>" for name, _ in reversed(stack)))
+        current = [raw for _, raw in stack]
+        size = sum(len(raw) for _, raw in stack)
+        body = 0
+
+    def emit(token: str) -> None:
+        nonlocal size, body
+        current.append(token)
+        size += len(token)
+        body += len(token)
+
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        tokens = list(_tokens(line))
+        # Une ligne entière suffit-elle ? Sinon on coupe AVANT elle.
+        if body:
+            simulated = list(stack)
+            for kind, raw, name in tokens:
+                if kind == "open":
+                    simulated.append((name, raw))
+                elif kind == "close":
+                    for pos in range(len(simulated) - 1, -1, -1):
+                        if simulated[pos][0] == name:
+                            simulated.pop(pos)
+                            break
+            projected = sum(len(raw) for _, raw, _ in tokens) + sum(
+                len(name) + 3 for name, _ in simulated
+            )
+            if index < len(lines) - 1:
+                projected += 1  # le saut de ligne qui suit
+            if size + projected > width:
+                flush()
+
+        for kind, raw, name in tokens:
+            if kind == "text":
+                rest = raw
+                while rest:
+                    room = width - size - close_cost()
+                    if room <= 0:
+                        if body:
+                            flush()
+                            continue
+                        room = 1  # limite absurde : on avance quand même
+                    piece, rest = rest[:room], rest[room:]
+                    emit(piece)
+                    if rest:
+                        flush()
+                continue
+            if body and size + len(raw) + close_cost() > width:
+                flush()
+            if kind == "open":
+                stack.append((name, raw))
+            elif kind == "close":
+                for pos in range(len(stack) - 1, -1, -1):
+                    if stack[pos][0] == name:
+                        stack.pop(pos)
+                        break
+                raw = f"</{name}>"
+            emit(raw)
+
+        if index < len(lines) - 1:
+            if body and size + 1 + close_cost() > width:
+                flush()
+            if body:
+                emit("\n")
+
+    flush()
 
     last = len(parts) - 1
-    return [p if i == last else p + suffix for i, p in enumerate(parts)]
+    return [part if i == last else part + suffix for i, part in enumerate(parts)]
 
 
 def due_label(due: date | None, today: date) -> str:

@@ -1,0 +1,46 @@
+[Unit]
+Description=Pronote Blocus — bot Telegram de rattrapage des devoirs PRONOTE
+Documentation=https://github.com/pronote-blocus/pronote-blocus
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pronote-blocus
+Group=pronote-blocus
+WorkingDirectory=/opt/pronote-blocus
+EnvironmentFile=/etc/pronote-blocus/pronote-blocus.env
+
+# DATA_DIR de l'environnement doit pointer ici (voir pronote-blocus.env.example).
+# Le venv contient le paquet installé en editable : `pip install -e .`.
+ExecStart=/opt/pronote-blocus/.venv/bin/python -m app.main
+
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+# Journal : journalctl -u pronote-blocus -f
+StandardOutput=journal
+StandardError=journal
+
+# Durcissement
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+# Seul DATA_DIR (app.db, uploads/, locks/) est inscriptible.
+ReadWritePaths=/var/lib/pronote-blocus
+
+[Install]
+WantedBy=multi-user.target

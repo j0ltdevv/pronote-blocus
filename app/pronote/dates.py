@@ -31,18 +31,20 @@ def date_explicite(text: str, base: date | None = None) -> str | None:
     m = re.search(rf"\b(\d{{1,2}})\s+({_MOIS_RE})\b", text, re.I)
     if not m:
         return None
-    try:
-        cand = date(base.year, MOIS_FR[m.group(2).lower()], int(m.group(1)))
-    except (ValueError, KeyError):
+    mois = MOIS_FR.get(m.group(2).lower())
+    if mois is None:
         return None
-    if _in_window(cand, base):
-        return cand.isoformat()
-    # « 5 janvier » en décembre = l'an prochain
-    try:
-        cand = date(base.year + 1, MOIS_FR[m.group(2).lower()], int(m.group(1)))
-    except (ValueError, KeyError):
-        return None
-    return cand.isoformat() if _in_window(cand, base) else None
+    jour = int(m.group(1))
+    # « 5 janvier » en décembre = l'an prochain ; « 29 février » une année
+    # non bissextile = l'année suivante (qui peut être bissextile).
+    for annee in (base.year, base.year + 1):
+        try:
+            cand = date(annee, mois, jour)
+        except ValueError:
+            continue
+        if _in_window(cand, base):
+            return cand.isoformat()
+    return None
 
 
 def prochain_jour(text: str, base: date | None = None) -> str | None:

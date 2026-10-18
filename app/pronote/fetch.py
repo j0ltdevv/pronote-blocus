@@ -403,7 +403,15 @@ def _collect_cours(
                 time.sleep(CONTENT_DELAY)
             content = _read_content(client, lesson)
             reads += 1
-            _cache_put(_cache_key(user_id, lesson), content)
+            # Contenu vide : ne PAS mettre en cache. Le docstring de la phase
+            # cours promet de « retenter à chaque passage ceux dont le contenu
+            # est encore vide ». Un cours vide mis en cache serait jamais
+            # relu avant le prochain raz de 4000 entrées, ce qui annulerait
+            # cette garantie. On garde par contre la protection anti-boucle :
+            # STATUS_VIDE évite de relire le même cours indéfiniment dans
+            # une même passe.
+            if not _content_is_empty(content):
+                _cache_put(_cache_key(user_id, lesson), content)
 
         contents[slot] = content
         db.set_lesson_status(

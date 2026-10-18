@@ -1,0 +1,6 @@
+include README.md
+recursive-include deploy *
+recursive-include web *
+recursive-include tests *.py
+recursive-include tests *.html
+global-exclude __pycache__ *.pyc

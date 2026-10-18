@@ -5,8 +5,10 @@ j'ai à rattraper ? »**, trié par urgence, à partir des cinq onglets PRONOTE
 (travail à faire, cahier de textes, informations et sondages, messagerie,
 pièces jointes).
 
-Aucun serveur web : `python-telegram-bot` en **long polling**. Pas d'URL
-publique, pas de HTTPS, pas de domaine, ça tourne derrière un NAT.
+Le bot n'a pas besoin de serveur web : `python-telegram-bot` en **long
+polling**, aucune URL publique, aucun HTTPS, aucun domaine — ça tourne derrière
+un NAT. Une PWA (FastAPI + `web/`) sert le même moteur depuis un navigateur :
+voir « Déploiement de l'interface web ».
 
 ## Démarrage
 
@@ -42,15 +44,28 @@ avec `/mdp <chat_id>` (le mot de passe n'est jamais journalisé).
 | `/matiere <texte>` | filtre par matière |
 | `/cours [matière]` | les contenus de cours à rattraper |
 | `/resume` | synthèse de la semaine |
-| `/fait <n>` | coche l'item `n` de la dernière liste |
-| `/refresh` | resynchronise (au plus toutes les 10 minutes) |
+| `/fait <n>` | coche l'item `n` de la dernière liste envoyée (local, invisible dans PRONOTE) |
+| `/refresh` | resynchronise si la dernière synchro a plus de 10 minutes, puis renvoie la liste |
 | `/priorites` | refait la liste des matières prioritaires |
-| `/supprimer` | efface le compte et toutes ses données (deux fois de suite) |
+| `/supprimer` | efface le compte et toutes ses données (à confirmer dans la minute) |
 | `/annuler` | annule le parcours de connexion en cours |
 | `/qui`, `/mdp <chat_id>` | admin seulement |
 
-Un texte qui n'est pas une commande est une question libre, répondue
-uniquement à partir des devoirs de l'élève, 10 questions par jour.
+Un texte qui n'est pas une commande est une question libre : elle part au LLM
+avec les seuls devoirs de l'élève (40 items max, restreints aux matières
+nommées dans la question quand elle en cite 3 ou moins), 10 questions par jour.
+
+Le quota de 10 questions ne compte que si un LLM est configuré : sans LLM,
+chaque message renvoie directement la liste filtrée, sans consommation.
+
+Le résumé quotidien part tout seul une fois par jour, après `digest_hour`
+(18 h par défaut, colonne `users.digest_hour` en base) : 5 items les plus
+urgents, les devoirs du jour, et la numérotation annoncée par `/fait N`.
+Une donnée de plus de 12 h déclenche une relecture PRONOTE avant l'envoi.
+
+`/retard` est paginé (`/retard 2`). `/fait <n>` vise la **dernière liste
+envoyée** (retard, résumé du jour, synthèse de semaine) : la numérotation est
+réécrite à chaque envoi, un numéro périmé répond « renvoie /retard ».
 
 ## Réglages (environnement)
 
@@ -59,9 +74,9 @@ uniquement à partir des devoirs de l'élève, 10 questions par jour.
 | `TELEGRAM_BOT_TOKEN` | — | obligatoire |
 | `APP_SECRET` | — | obligatoire, clé Fernet |
 | `ADMIN_CHAT_ID` | vide | `/qui`, `/mdp` |
-| `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage |
-| `DEFAULT_PRONOTE_URL` | établissement | si le QR ne porte pas d'URL exploitable |
-| `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile |
+| `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage ; elle court jusqu'à aujourd'hui + 45 jours (`FORWARD_DAYS`) |
+| `DEFAULT_PRONOTE_URL` | `https://0332722e.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
+| `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile ; lu en config mais **non appliqué** à la connexion (voir « Limites connues ») |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
 | `LLM_MESSAGES` | `1` | `0` = le corps des messages de profs ne sort jamais du serveur |
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
@@ -71,15 +86,243 @@ uniquement à partir des devoirs de l'élève, 10 questions par jour.
 
 Il est **strictement en lecture** : il n'appelle ni `Homework.set_done`, ni le
 marquage « lu » des informations ni celui de la messagerie. Lire ne modifie
-rien chez l'élève. Le seul état écrit est local (`done_local`, priorités).
+rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
+`list_ref`).
+
+## Limites connues
+
+- **Phase `cours` plafonnée** : 30 contenus de cours lus par synchro, 1,2 s
+  entre deux (`MAX_CONTENT_READS`, `CONTENT_DELAY`). Au-delà, `/cours` reste
+  partiel jusqu'à la synchro suivante : chaque lecture de contenu est une
+  requête réseau, et le serveur PRONOTE n'aime pas les rafales.
+- **`PRONOTE_MOBILE_QUERY` est inopérant** : la valeur est lue dans la config
+  mais `auth.mobile_url` utilise la constante `DEFAULT_MOBILE_QUERY`. Seule
+  cette constante compte pour la connexion par jeton.
+- **`DATA_DIR/uploads/` est créé mais inutilisé** : seuls `app.db` et
+  `locks/` portent des données.
+- **Pièces jointes jamais téléchargées** : seul le nombre de fichiers d'un
+  devoir est lu et affiché (📎2), aucun binaire n'est stocké.
+- **Une seule instance** : le service ne prend pas de verrou global. Deux
+  processus qui pointent le même `DATA_DIR` se marchent dessus sur SQLite.
+- **Fenêtre de rattrapage figée** : `WINDOW_START` n'est relu qu'au démarrage ;
+  changer la variable demande un `systemctl restart`.
+- **`digest_hour` n'est pas exposed** : c'est une colonne SQLite, à modifier
+  en base si besoin.
+
+## Déploiement
+
+Cible : un VPS ou une machine toujours allumée, derrière un NAT, sans URL
+publique. Le bot tourne en long polling, un seul processus suffit.
+
+**1. Utilisateur et code**
+
+```bash
+sudo useradd --system --home /opt/pronote-blocus --shell /usr/sbin/nologin pronote-blocus
+sudo git clone <dépôt> /opt/pronote-blocus
+sudo chown -R pronote-blocus:pronote-blocus /opt/pronote-blocus
+cd /opt/pronote-blocus
+sudo -u pronote-blocus python3 -m venv .venv
+sudo -u pronote-blocus .venv/bin/pip install -e .
+```
+
+**2. Configuration**
+
+```bash
+sudo install -d -o root -g pronote-blocus -m 0750 /etc/pronote-blocus
+sudo install -o root -g pronote-blocus -m 0640 \
+     deploy/pronote-blocus.env.example /etc/pronote-blocus/pronote-blocus.env
+sudoedit /etc/pronote-blocus/pronote-blocus.env   # token, APP_SECRET, ADMIN_CHAT_ID
+```
+
+`APP_SECRET` est la seule donnée irremplaçable : elle chiffre les jetons
+PRONOTE de tous les élèves. **Sauvegarde-la hors du dépôt** (gestionnaire de
+mots de passe, coffre). La perdre = tout le monde refait son QR.
+
+`DATA_DIR` doit valoir `/var/lib/pronote-blocus` : c'est le seul chemin que
+l'unité systemd autorise en écriture (`ReadWritePaths`).
+
+```bash
+sudo install -d -o pronote-blocus -g pronote-blocus -m 0700 /var/lib/pronote-blocus
+```
+
+**3. Service**
+
+```bash
+sudo cp deploy/pronote-blocus.service /etc/systemd/system/
+sudo systemd-analyze verify /etc/systemd/system/pronote-blocus.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pronote-blocus
+```
+
+**4. Vérification**
+
+```bash
+systemctl status pronote-blocus            # active (running)
+journalctl -u pronote-blocus -f            # « pronote-blocus démarre en long polling »
+```
+
+Puis, depuis Telegram, `/qui` en admin doit répondre avec le nombre de comptes
+suivis. Un `SystemExit: Configuration incomplète` dans le journal signifie une
+variable absente ou invalide dans `/etc/pronote-blocus/pronote-blocus.env`.
+
+**5. Mise à jour**
+
+```bash
+cd /opt/pronote-blocus
+sudo -u pronote-blocus git pull
+sudo -u pronote-blocus .venv/bin/pip install -e .
+sudo systemctl restart pronote-blocus
+journalctl -u pronote-blocus -n 30 --no-pager
+```
+
+Redémarrer le service ne perd rien : l'état vit dans `DATA_DIR/app.db` et les
+jetons PRONOTE sont chiffrés avec `APP_SECRET`, inchangé entre deux versions.
+
+**Dépannage rapide**
+
+| Symptôme | Cause probable |
+|---|---|
+| `Configuration incomplète` au démarrage | variable manquante dans l'env |
+| `APP_SECRET invalide` | clé Fernet tronquée ou régénérée à la main |
+| service redémarre en boucle (`Restart=on-failure`) | token refusé par Telegram → voir `journalctl` |
+| `Read-only file system` | `DATA_DIR` ne correspond pas à `ReadWritePaths` |
+| `WINDOW_START invalide` | date mal formée dans l'env : le bot refuse de démarrer |
+| `Ta connexion PRONOTE a expiré` | jeton révoilé : seul un `/start` avec un QR neuf répare le compte |
+| `PRONOTE nous ralentit…` | 429/403 : pause de 3 s, un seul nouvel essai, puis abandon |
+| `PIN requis` | compte PRONOTE protégé par un code : le bot le demande, sinon passe par `/mdp` |
+| « Je n'ai pas pu réfléchir » | LLM absent, en panne ou quota épuisé : le bot renvoie la liste brute |
+| « Aucun contenu de cours » | phase `cours` encore en cours (tâche de fond) ou plafonnée à 30 lectures |
+
+## Déploiement de l'interface web
+
+> Le paragraphe d'introduction du haut (« Aucun serveur web… ») décrit le **bot
+> seul**. L'interface web ajoute un second processus, `pronote-web`, qui sert
+> l'API (`/api/*`) et la PWA (`web/`) via uvicorn sur `127.0.0.1:8000`.
+
+### ⚠️ Ne pas exposer avant l'authentification
+
+**Tant que le slice `ApiAuth` n'est pas fusionné et déployé, le serveur web
+n'a AUCUNE authentification** : `user_id` vient du client, `logout` supprime un
+compte sans preuve d'identité, et le CORS est ouvert (`allow_origins=["*"]`).
+Un porteur d'URL peut donc lire et supprimer les données de n'importe qui.
+**Ne publiez le domaine qu'après `ApiAuth`.** Contrôle, une fois déployé :
+
+```bash
+# Doit répondre 401/403 (non authentifié), PAS 200.
+curl -s -o /dev/null -w '%{http_code}\n' https://pronote.example.org/api/items
+```
+
+### 1. Configuration
+
+```bash
+sudo install -o root -g pronote-blocus -m 0640 \
+     deploy/pronote-web.env.example /etc/pronote-blocus/pronote-web.env
+sudoedit /etc/pronote-blocus/pronote-web.env
+```
+
+- `APP_SECRET` doit être **identique** à celui du bot : les deux processus
+  lisent la même base `/var/lib/pronote-blocus/app.db` et déchiffrent les jetons
+  PRONOTE avec la même clé. Deux clés différentes = jetons illisibles.
+- `WEB_ORIGIN` doit valoir **exactement** le domaine public du Caddyfile (schéma
+  inclus, sans slash final, ex. `https://pronote.example.org`). Après
+  `ApiAuth`, c'est la seule origine autorisée par le CORS : une valeur erronée
+  fait bloquer toutes les requêtes par le navigateur.
+- `DATA_DIR=/var/lib/pronote-blocus` : seul chemin inscriptible (ReadWritePaths).
+
+### 2. Service
+
+```bash
+sudo cp deploy/pronote-web.service /etc/systemd/system/
+sudo systemd-analyze verify /etc/systemd/system/pronote-web.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pronote-web
+systemctl status pronote-web            # active (running)
+curl -s http://127.0.0.1:8000/health    # {"status":"ok"}
+```
+
+L'unité n'écoute **que sur la boucle locale** (`--host 127.0.0.1`). Ne jamais
+la passer en `0.0.0.0` : le TLS et l'accès public passent par le reverse proxy.
+
+### 3. Reverse proxy et TLS
+
+Caddy obtient et renouvelle le certificat TLS automatiquement (ACME),
+à condition que le domaine pointe sur la machine et que 80/443 soient ouverts.
+
+```bash
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudoedit /etc/caddy/Caddyfile           # domaine réel + email ACME
+caddy validate --config /etc/caddy/Caddyfile   # « Valid configuration »
+sudo systemctl reload caddy
+```
+
+Le `Caddyfile` fournit : TLS automatique, reverse proxy vers
+`127.0.0.1:8000`, HSTS, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy`, `X-Frame-Options` et une CSP compatible PWA (le service
+worker `sw.js` est autorisé par `worker-src 'self'`). La taille de corps est
+limitée à 10 Mo pour l'upload du QR.
+
+La CSP est stricte (`script-src 'self' ; style-src 'self'`, sans
+`'unsafe-inline'`) pour l'app shell. **Seule exception** : `/offline.html`,
+page de secours dont le style et le script sont en ligne — sa CSP est
+assouplie par une directive différée dans le `Caddyfile`, sans donnée
+utilisateur ni origine externe.
+
+### 4. Pare-feu
+
+Seuls 80 et 443 sont publics. `pronote-web` n'écoute que sur la boucle locale :
+le port 8000 n'a jamais besoin d'être ouvert.
+
+```bash
+sudo ufw default deny incoming
+sudo ufw allow 22/tcp        # SSH (remplacer par votre port)
+sudo ufw allow 80/tcp        # ACME + redirection HTTP→HTTPS
+sudo ufw allow 443/tcp       # HTTPS
+sudo ufw enable
+sudo ufw status verbose
+```
+
+Si le serveur est derrière un NAT (VPS cloud), restreindre de la même façon le
+*security group* du fournisseur.
+
+### 5. Sauvegarde
+
+Deux éléments suffisent à tout restaurer : `APP_SECRET` et la base.
+
+```bash
+# Sauvegarde à chaud, cohérente (SQLite en ligne).
+sudo install -d -m 0700 /var/backups/pronote-blocus
+sudo sqlite3 /var/lib/pronote-blocus/app.db \
+     ".backup '/var/backups/pronote-blocus/app-$(date +%F).db'"
+```
+
+- **`APP_SECRET`** : à conserver hors du serveur (gestionnaire de mots de passe,
+  coffre). La perdre = chaque élève doit refaire un QR ; la fuiter = les jetons
+  PRONOTE stockés sont lisibles.
+- **Base** : `/var/lib/pronote-blocus/app.db` (comptes, priorités, état local).
+  Copiez-la avec `.backup` (jamais `cp` : une copie à chaud peut être corrompue).
+
+### 6. Rotation des jetons
+
+- **Jeton PRONOTE par élève** : tourne automatiquement à chaque synchro
+  (`/refresh`, relecture du digest). Un jeton volé devient inutile au prochain
+  accès ; « Ta connexion PRONOTE a expiré » signifie un jeton révoilé côté
+  PRONOTE → l'élève refait un QR.
+- **`APP_SECRET`** : à changer en cas de fuite. Tout le magasin de jetons devient
+  illisible d'un coup, ce qui **force chaque élève à rescanner son QR** :
+  prévenez-les. Procédure : arrêter `pronote-web` et `pronote-blocus`, mettre à
+  jour `APP_SECRET` dans les deux env, redémarrer. Les anciens jetons sont
+  purgés à la reconnexion.
+- **Suppression d'un compte** : l'élève fait `/supprimer` (bot) ou la PWA
+  supprime ses données ; la ligne `users` et ses jetons chiffrés disparaissent.
 
 ## Développement
 
 ```bash
-python -m pytest tests -q          # suite hors réseau
-python -m app.dev_demo             # pipeline réel sur le compte de démo public
+pip install -e ".[dev]"          # ajoute pytest et segno (QR de test)
+python -m pytest tests -q        # suite hors réseau
+python -m app.dev_demo           # pipeline réel sur le compte de démo public
 ```
 
-`tests/fake_telegram.py` branche un transport Telegram simulé :
-`build_application(cfg, conn, request=FakeRequest())` rejoue tout le parcours
-sans réseau ni token.
+`tests/fake_telegram.py` expose `FakeTelegramRequest` : il se branche sur
+`build_application(cfg, conn, request=FakeTelegramRequest())` et rejoue tout le
+parcours (connexion QR comprise) sans réseau ni token.
