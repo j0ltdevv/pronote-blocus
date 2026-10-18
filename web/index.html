@@ -125,7 +125,12 @@
           </p>
         </details>
 
-        <button id="qrBtn" class="open-doc primary-action" type="button">Envoyer la capture →</button>
+        <p class="paste-hint">
+          <strong>Le plus rapide sur téléphone :</strong> fais ta capture, reviens ici
+          et <strong>colle-la</strong> (appui long → Coller). Tu peux aussi la choisir ci-dessous.
+        </p>
+        <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture envoyée" hidden>
+        <button id="qrBtn" class="open-doc primary-action" type="button">Choisir une capture →</button>
         <input id="qrFile" type="file" accept="image/*" class="hidden">
         <p class="status" id="qrStatus"></p>
       </section>
