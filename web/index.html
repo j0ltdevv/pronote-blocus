@@ -1,126 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="theme-color" content="#f7f8fc" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#12152b" media="(prefers-color-scheme: dark)" />
-  <title>Pronote Blocus</title>
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="preload" href="/fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="/styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Pronote Blocus — Mes devoirs</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-
-  <header class="top">
-    <span class="wordmark">Blocus</span>
-    <button id="refreshBtn" class="icon-btn" type="button" aria-label="Actualiser les devoirs">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M20 12a8 8 0 1 1-2.6-5.9" />
-        <path d="M20 4.5v4.6h-4.6" />
-      </svg>
-    </button>
-    <button id="logoutBtn" class="icon-btn" type="button" aria-label="Se déconnecter" onclick="logout()">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
-        <path d="M10 17l-5-5 5-5" />
-        <path d="M5 12h10" />
-      </svg>
-    </button>
-  </header>
-
-  <main id="app">
-
-    <div id="notice" class="notice hidden" role="alert"></div>
-
-    <!-- Connexion : QR code -->
-    <section id="authQr" class="auth hidden">
-      <h1>Connecte ton compte PRONOTE</h1>
-      <p class="lead">Dans PRONOTE, affiche le QR code de connexion mobile, fais-en une capture d’écran, puis envoie-la ici.</p>
-      <label class="btn">
-        <input type="file" id="qrFile" accept="image/*" class="sr-only" />
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 16V4" />
-          <path d="M7 9l5-5 5 5" />
-          <path d="M5 20h14" />
-        </svg>
-        Choisir la capture
-      </label>
-      <p id="qrStatus" class="status" role="status"></p>
-    </section>
-
-    <!-- Connexion : code à 4 chiffres -->
-    <section id="authPin" class="auth hidden">
-      <h1>Entre ton code</h1>
-      <p class="lead">C’est le code à 4 chiffres que tu as choisi en créant le QR code.</p>
-      <form id="pinForm" novalidate>
-        <label class="sr-only" for="pinInput">Code à 4 chiffres</label>
-        <input id="pinInput" class="pin" type="text" inputmode="numeric" autocomplete="off"
-               maxlength="4" pattern="[0-9]{4}" placeholder="••••" />
-        <button id="pinBtn" class="btn" type="submit">Valider</button>
-      </form>
-      <p id="pinStatus" class="status is-error" role="status"></p>
-    </section>
-
-    <!-- Chargement -->
-    <section id="loading" class="sheet hidden" aria-busy="true" aria-label="Chargement des devoirs">
-      <div class="sk-row"><span class="sk sk-when"></span><span class="sk sk-text"></span></div>
-      <div class="sk-row"><span class="sk sk-when"></span><span class="sk sk-text sk-short"></span></div>
-      <div class="sk-row"><span class="sk sk-when"></span><span class="sk sk-text"></span></div>
-      <div class="sk-row"><span class="sk sk-when"></span><span class="sk sk-text sk-short"></span></div>
-    </section>
-
-    <!-- Rien à faire -->
-    <section id="empty" class="sheet empty hidden">
-      <div class="summary">
-        <h1>Tout est à jour</h1>
-        <p>Les nouveaux devoirs apparaîtront ici dès que tu actualises.</p>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">PB</span><span>Pronote<br><b>Blocus</b></span></div>
+      <div class="profile">
+        <div class="avatar" id="avatar">·</div>
+        <div><strong id="profileName">Mon compte</strong><small id="profileMeta">PRONOTE</small></div>
+        <button class="dots" id="logoutBtn" aria-label="Se déconnecter" title="Se déconnecter">⏻</button>
       </div>
-    </section>
-
-    <!-- Devoirs -->
-    <section id="homework" class="sheet hidden">
-      <div class="summary">
-        <h1 id="summaryTitle"></h1>
-        <p id="summaryMeta"></p>
+      <nav aria-label="Navigation principale">
+        <p class="nav-label">Mon espace</p>
+        <a class="nav-item active" href="#homework" data-filter="all"><span class="nav-icon">▤</span> Tous les devoirs <em id="navAll">0</em></a>
+        <a class="nav-item" href="#homework" data-filter="late"><span class="nav-icon">!</span> En retard <em id="navLate">0</em></a>
+        <a class="nav-item" href="#homework" data-filter="soon"><span class="nav-icon">✓</span> À venir <em id="navSoon">0</em></a>
+        <a class="nav-item" href="#homework" data-filter="done"><span class="nav-icon">★</span> Faits <em id="navDone">0</em></a>
+        <p class="nav-label second">Aide</p>
+        <a class="nav-item" href="#chat"><span class="nav-icon">?</span> Poser une question</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sync-dot"></div><span id="syncLabel">Pas encore synchronisé</span>
+        <button id="refreshBtn" class="refresh" aria-label="Actualiser">↻</button>
       </div>
+    </aside>
 
-      <div id="overdueSection" class="group">
-        <h2 class="group-title">En retard <span id="overdueCount" class="count"></span></h2>
-        <ul id="overdueList" class="rows"></ul>
-      </div>
+    <main class="content" id="documents">
+      <header class="topbar">
+        <div class="breadcrumb"><span>Mon espace</span><b>/</b><strong>Devoirs</strong></div>
+        <div class="top-actions">
+          <button class="icon-button" id="topRefresh" aria-label="Actualiser">↻</button>
+        </div>
+      </header>
 
-      <div id="upcomingSection" class="group">
-        <h2 class="group-title">À venir <span id="upcomingCount" class="count"></span></h2>
-        <ul id="upcomingList" class="rows"></ul>
-      </div>
+      <section class="docs-hero">
+        <div>
+          <p class="eyebrow">Ce que tu as à rattraper</p>
+          <h1 id="summaryTitle">Bonjour.</h1>
+          <p class="subline" id="summaryMeta">Connecte ton compte pour voir tes devoirs.</p>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit-card card-back">DM</div>
+          <div class="orbit-card card-mid">EX</div>
+          <div class="orbit-card card-front"><span>▤</span><small id="orbitCount">—</small></div>
+          <div class="orbit-dot"></div>
+        </div>
+      </section>
 
-      <details id="doneSection" class="group group-done">
-        <summary class="group-title">Fait <span id="doneCount" class="count"></span></summary>
-        <ul id="doneList" class="rows"></ul>
-      </details>
-    </section>
+      <div id="notice" class="notice hidden" role="alert"></div>
 
-    <!-- Conversation -->
-    <section id="chatMessages" class="chat hidden" aria-live="polite" aria-label="Conversation"></section>
+      <!-- Connexion : QR -->
+      <section id="authQr" class="panel hidden">
+        <p class="eyebrow">Connexion</p>
+        <h2>Connecte ton compte PRONOTE</h2>
+        <p class="subline">Dans PRONOTE, affiche le QR code de connexion mobile, fais-en une capture d'écran, puis envoie-la ici.</p>
+        <label class="segmented" style="display:inline-flex;cursor:pointer">
+          <span class="segment active">Choisir la capture</span>
+          <input id="qrFile" type="file" accept="image/*" class="hidden">
+        </label>
+        <p class="status" id="qrStatus"></p>
+      </section>
 
-  </main>
+      <!-- Connexion : PIN -->
+      <section id="authPin" class="panel hidden">
+        <p class="eyebrow">Connexion</p>
+        <h2>Entre le code du QR</h2>
+        <p class="subline">C'est le code à 4 chiffres que tu as choisi en générant le QR.</p>
+        <form id="pinForm" class="pin-form">
+          <input id="pinInput" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="••••" aria-label="Code à 4 chiffres">
+          <button id="pinBtn" type="submit" class="open-doc">Valider →</button>
+        </form>
+        <p class="status" id="pinStatus"></p>
+      </section>
 
-  <footer id="chatFooter" class="ask hidden">
-    <form id="chatForm">
-      <label class="sr-only" for="chatInput">Ta question</label>
-      <input id="chatInput" type="text" placeholder="Une question sur tes devoirs ?" autocomplete="off" />
-      <button type="submit" aria-label="Envoyer">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 19V5" />
-          <path d="M5.5 11.5L12 5l6.5 6.5" />
-        </svg>
-      </button>
-    </form>
-  </footer>
+      <div id="loading" class="loading hidden" role="status">Chargement de tes devoirs…</div>
 
+      <section id="homework" class="hidden">
+        <section class="section-head" id="lateSection">
+          <div><p class="eyebrow">À rattraper</p><h2>En retard <span class="count" id="lateCount"></span></h2></div>
+        </section>
+        <div class="document-grid" id="lateList"></div>
+
+        <section class="section-head" id="soonSection">
+          <div><p class="eyebrow">Ça arrive</p><h2>À venir <span class="count" id="soonCount"></span></h2></div>
+        </section>
+        <div class="document-grid" id="soonList"></div>
+
+        <section class="section-head" id="doneSection">
+          <div><p class="eyebrow">Déjà fait</p><h2>Faits <span class="count" id="doneCount"></span></h2></div>
+        </section>
+        <div class="document-grid" id="doneList"></div>
+      </section>
+
+      <div class="empty hidden" id="empty">Rien à afficher pour l'instant.</div>
+
+      <section id="chat" class="panel hidden">
+        <p class="eyebrow">Question libre</p>
+        <h2>Demande-moi</h2>
+        <div class="chat-messages" id="chatMessages"></div>
+        <form id="chatForm" class="pin-form">
+          <input id="chatInput" type="text" placeholder="Qu'est-ce que je dois faire en maths ?" aria-label="Ta question">
+          <button type="submit" class="open-doc">Envoyer →</button>
+        </form>
+        <p class="status">10 questions par jour. Sans LLM, je réponds avec ta liste.</p>
+      </section>
+
+      <footer><span>Pronote Blocus <b>·</b> un pas après l'autre.</span><span>Connecté à PRONOTE <i class="footer-dot"></i></span></footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>
 </html>
