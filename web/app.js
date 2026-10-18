@@ -296,32 +296,74 @@ document.querySelectorAll("[data-filter]").forEach((link) => {
 // ── Auth : QR ─────────────────────────────────────────────────────────
 $("qrBtn").addEventListener("click", () => $("qrFile").click());
 
-$("qrFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  e.target.value = "";
-  if (!file) return;
+/** Envoie une capture (fichier, collage ou glisser-déposer) au serveur. */
+async function sendQrFile(file) {
   const status = $("qrStatus");
   status.classList.remove("is-error");
   status.textContent = "Lecture du QR code…";
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const base64 = reader.result.split(",")[1];
-      const data = await api("/api/auth/qr", {
-        method: "POST",
-        body: JSON.stringify({ image_base64: base64 }),
-      });
-      sessionId = data.session_id;
-      hide("authQr");
-      show("authPin");
-      status.textContent = "";
-      $("pinInput").focus();
-    } catch (err) {
-      status.classList.add("is-error");
-      status.textContent = `QR code illisible (${err.message}). Essaie avec une capture plus nette.`;
-    }
-  };
-  reader.readAsDataURL(file);
+
+  const preview = $("qrPreview");
+  if (preview) {
+    preview.src = URL.createObjectURL(file);
+    preview.hidden = false;
+  }
+
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("lecture du fichier impossible"));
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const data = await api("/api/auth/qr", {
+      method: "POST",
+      body: JSON.stringify({ image_base64: base64 }),
+    });
+    sessionId = data.session_id;
+    hide("authQr");
+    show("authPin");
+    status.textContent = "";
+    $("pinStatus").textContent = "QR lu ✅ Entre le code à 4 chiffres.";
+    $("pinInput").focus();
+  } catch (err) {
+    status.classList.add("is-error");
+    status.textContent = `QR code illisible (${err.message}). Réessaie avec une capture plus nette ou plus grande.`;
+    if (preview) preview.hidden = true;
+  }
+}
+
+$("qrFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (file) sendQrFile(file);
+});
+
+// Coller une capture : sur téléphone, c'est un raccourci (copier l'image).
+document.addEventListener("paste", (e) => {
+  if (!token && $("authQr").classList.contains("hidden")) return;
+  const items = [...(e.clipboardData?.items || [])];
+  const image = items.find((i) => i.type.startsWith("image/"));
+  if (!image) return;
+  const file = image.getAsFile();
+  if (file) {
+    e.preventDefault();
+    sendQrFile(file);
+  }
+});
+
+// Glisser-déposer sur le panneau de connexion.
+const authPanel = $("authQr");
+["dragover", "dragenter"].forEach((ev) =>
+  authPanel.addEventListener(ev, (e) => { e.preventDefault(); authPanel.classList.add("is-dragover"); })
+);
+["dragleave", "drop"].forEach((ev) =>
+  authPanel.addEventListener(ev, () => authPanel.classList.remove("is-dragover"))
+);
+authPanel.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith("image/"));
+  if (file) sendQrFile(file);
 });
 
 // ── Auth : PIN ────────────────────────────────────────────────────────

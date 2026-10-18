@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v8 : mobile d'abord (cibles 44px, texte 15px) */
+/* v9 : collage de la capture QR */
 
-const CACHE_NAME = 'pronote-blocus-v8';
-const API_CACHE = 'pronote-blocus-api-v8';
+const CACHE_NAME = 'pronote-blocus-v9';
+const API_CACHE = 'pronote-blocus-api-v9';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [

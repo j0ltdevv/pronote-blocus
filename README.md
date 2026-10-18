@@ -1,31 +1,53 @@
 # Pronote Blocus
 
-Bot Telegram qui répond à un lycéen revenu après une absence : **« qu'est-ce que
-j'ai à rattraper ? »**, trié par urgence, à partir des cinq onglets PRONOTE
+Application web qui répond à un lycéen revenu après une absence : **« qu'est-ce
+que j'ai à rattraper ? »**, trié par urgence, à partir des cinq onglets PRONOTE
 (travail à faire, cahier de textes, informations et sondages, messagerie,
 pièces jointes).
 
-Le bot n'a pas besoin de serveur web : `python-telegram-bot` en **long
-polling**, aucune URL publique, aucun HTTPS, aucun domaine — ça tourne derrière
-un NAT. Une PWA (FastAPI + `web/`) sert le même moteur depuis un navigateur :
-voir « Déploiement de l'interface web ».
+Le produit est la **PWA** (`web/` + `server/`, FastAPI) : elle s'ouvre depuis un
+téléphone, s'installe sur l'écran d'accueil, et ne demande jamais le mot de
+passe PRONOTE — la connexion se fait par QR code. Un **bot Telegram** répond au
+même moteur ; il reste disponible en option, mais les lycéens ne l'utilisent pas.
 
-## Démarrage
+Rien n'est jamais écrit dans PRONOTE : l'application est **strictement en
+lecture**.
+
+## Démarrage (web)
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e .
-export TELEGRAM_BOT_TOKEN=...        # @BotFather
+pip install -e ".[dev]"
 export APP_SECRET=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-export ADMIN_CHAT_ID=...             # ton chat_id, pour /qui et /mdp
-python -m app.main
+export DATA_DIR=./data
+uvicorn server.main:app --host 127.0.0.1 --port 8000
 ```
+
+Ouvre `http://localhost:8000/`. `TELEGRAM_BOT_TOKEN` n'est **pas** nécessaire
+pour l'interface web.
 
 `APP_SECRET` chiffre les jetons PRONOTE. **Perdre cette clé = tous les comptes
 doivent refaire un QR** : sauvegarde-la hors du dépôt, et garde-la stable entre
 redémarrages.
 
-## Parcours élève (trois messages)
+## Parcours élève (web)
+
+1. L'écran de connexion explique comment récupérer le QR (Espace Élève PRONOTE →
+   bouton QR → code à 4 chiffres → capture).
+2. L'élève colle la capture (ou la choisit) ; le serveur décode le QR.
+3. Il saisit son code à 4 chiffres → la liste s'affiche, triée : **en retard**,
+   **à venir**, **faits**.
+4. Il coche ce qu'il a fait — dans Blocus uniquement, jamais dans PRONOTE.
+
+## Bot Telegram (option)
+
+```bash
+export TELEGRAM_BOT_TOKEN=...        # @BotFather
+export ADMIN_CHAT_ID=...             # ton chat_id, pour /qui et /mdp
+python -m app.main
+```
+
+### Parcours du bot (trois messages)
 
 1. `/start` → « envoie une capture d'écran du QR de PRONOTE ».
 2. photo du QR → le bot demande le code à 4 chiffres choisi en générant le QR.
@@ -35,7 +57,7 @@ redémarrages.
 Le parcours identifiant / mot de passe existe en secours, activé par l'admin
 avec `/mdp <chat_id>` (le mot de passe n'est jamais journalisé).
 
-## Commandes
+## Commandes du bot
 
 | Commande | Effet |
 |---|---|
@@ -67,7 +89,7 @@ Une donnée de plus de 12 h déclenche une relecture PRONOTE avant l'envoi.
 envoyée** (retard, résumé du jour, synthèse de semaine) : la numérotation est
 réécrite à chaque envoi, un numéro périmé répond « renvoie /retard ».
 
-## Réglages (environnement)
+## Réglages (environnement, web et bot)
 
 | Variable | Défaut | Rôle |
 |---|---|---|
@@ -82,7 +104,7 @@ réécrite à chaque envoi, un numéro périmé répond « renvoie /retard ».
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
 | `DATA_DIR` | `data` | `app.db`, `uploads/`, `locks/` |
 
-## Ce que le bot ne fait jamais
+## Ce que Blocus ne fait jamais
 
 Il est **strictement en lecture** : il n'appelle ni `Homework.set_done`, ni le
 marquage « lu » des informations ni celui de la messagerie. Lire ne modifie
@@ -109,7 +131,7 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
 - **`digest_hour` n'est pas exposed** : c'est une colonne SQLite, à modifier
   en base si besoin.
 
-## Déploiement
+## Déploiement du bot (option)
 
 Cible : un VPS ou une machine toujours allumée, derrière un NAT, sans URL
 publique. Le bot tourne en long polling, un seul processus suffit.

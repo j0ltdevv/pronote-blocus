@@ -166,3 +166,16 @@ body.is-guest .docs-hero { padding-bottom: 8px; }
   .document-card .open-doc { min-height: 44px; padding: 10px 16px; }
   .nav-item { min-height: 44px; display: flex; align-items: center; }
 }
+
+/* ── Collage / aperçu de la capture ──────────────────────────────────── */
+.paste-hint {
+  margin: 14px 0 10px; padding: 12px 14px;
+  background: var(--green-soft, #e5eeeb); color: var(--green, #245c52);
+  border-radius: 10px; font-size: .92rem; line-height: 1.5;
+}
+.qr-preview {
+  display: block; width: 132px; height: 132px; object-fit: contain;
+  margin: 10px 0; border: 1px solid var(--line, #d9d9d4); border-radius: 10px;
+  background: #fff;
+}
+.panel-auth.is-dragover { outline: 2px dashed var(--green, #245c52); outline-offset: 4px; }
