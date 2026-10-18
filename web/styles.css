@@ -159,17 +159,22 @@ button{font:inherit}
 .cross-list li::before{content:"–"; position:absolute; left:0; color:var(--red); font-weight:700}
 
 .paste-hint{
-  margin:12px 0 10px; padding:10px 12px; border-radius:10px;
-  background:var(--green-soft); border:1px solid var(--green-line);
-  color:var(--green); font-size:12.5px; line-height:1.5;
+  margin:0; color:var(--muted); font-size:12px; line-height:1.4; text-align:center;
 }
 .qr-preview{
-  display:block; width:140px; height:140px; object-fit:contain;
-  margin:10px 0; background:#fff; border:1px solid var(--line); border-radius:10px;
+  display:block; width:160px; height:160px; object-fit:contain;
+  background:#fff; border:1px solid var(--line); border-radius:12px;
 }
-.qr-zone{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:10px 0}
+.qr-zone{
+  border:1.5px dashed var(--line-2); border-radius:16px; background:#fcfcfa;
+  padding:20px 16px; margin:12px 0 10px;
+  display:grid; place-items:center; gap:12px; text-align:center;
+}
+.qr-zone.has-preview{background:#fff; border-style:solid}
+.qr-cta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center}
 .qr-or{font-size:12px; color:var(--muted)}
-.panel-auth.is-dragover{outline:2px dashed var(--green); outline-offset:3px}
+.step-hint{color:var(--muted); font-weight:400; font-size:12px}
+.panel-auth.is-dragover .qr-zone{border-color:var(--green); background:var(--green-soft)}
 
 /* auth tabs */
 .auth-switch{display:flex; gap:4px; background:var(--bg); border:1px solid var(--line); padding:4px; border-radius:999px; width:fit-content; margin:14px 0}
@@ -310,9 +315,20 @@ body.is-guest .docs-hero{border-bottom:0}
   .docs-hero h1{font-size:24px}
   .document-grid{grid-template-columns:1fr}
   .panel{padding:14px}
-  .pin-form{flex-direction:column; align-items:stretch}
+  .panel-auth{margin:10px 0; border-radius:16px}
+  .panel-auth h2{font-size:20px}
+  .auth-switch{width:100%; display:grid; grid-template-columns:1fr 1fr}
+  .auth-tab{padding:11px 8px; font-size:12.5px}
+  .qr-zone{padding:18px 14px}
+  .qr-preview{width:180px; height:180px}
+  .qr-cta{flex-direction:column; width:100%}
+  .qr-cta .primary-action{width:100%; padding:14px}
+  .steps{font-size:14px}
   #pinInput{max-width:none}
-  .primary-action{width:100%}
+  .primary-action{width:100%; padding:14px; font-size:14px}
+  .pwd-form input,.pwd-form select{padding:13px 12px; font-size:16px}
+  .pin-form{flex-direction:column; align-items:stretch}
+  .pin-form input{padding:13px 12px; font-size:16px}
   .msg{max-width:86%}
   footer{flex-direction:column}
 }

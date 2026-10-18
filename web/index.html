@@ -73,18 +73,20 @@
 
         <!-- Mode QR (par defaut, rassurant) -->
         <div id="qrTab">
-          <p class="paste-hint" id="qrHint">Tu restes avec ton mot de passe PRONOTE. Le QR ne le contient pas.</p>
-          <div class="qr-zone">
+          <div class="qr-zone" id="qrZone">
             <img id="qrPreview" class="qr-preview" alt="Aperçu de la capture" hidden>
-            <button id="qrBtn" class="primary-action" type="button">Choisir une capture →</button>
-            <span class="qr-or">ou colle avec Ctrl+V</span>
+            <div class="qr-cta">
+              <button id="qrBtn" class="primary-action" type="button">Choisir une capture →</button>
+              <span class="qr-or">ou glisse ton image ici</span>
+            </div>
+            <p class="paste-hint" id="qrHint">Sur ordi : colle (Ctrl+V). Sur téléphone : capture d'écran du QR dans PRONOTE.</p>
           </div>
           <input id="qrFile" type="file" accept="image/*" class="hidden">
           <p class="status" id="qrStatus"></p>
           <details class="how" open>
             <summary>Où trouver le QR ?</summary>
             <ol class="steps">
-              <li>PRONOTE → bandeau du haut → <strong>QR code</strong> (sur téléphone : “version ordinateur”).</li>
+              <li>PRONOTE → bandeau du haut → <strong>QR code</strong> <span class="step-hint">(sur téléphone : “version ordinateur”)</span></li>
               <li>Choisis un <strong>code à 4 chiffres</strong> → Générer → <strong>capture d'écran</strong>.</li>
               <li>Reviens ici et envoie la capture.</li>
             </ol>

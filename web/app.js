@@ -312,6 +312,7 @@ async function sendQrFile(file) {
   const status = $("qrStatus");
   status.classList.remove("is-error");
   status.textContent = "Lecture du QR code…";
+  $("qrZone")?.classList.add("has-preview");
 
   const preview = $("qrPreview");
   if (preview) {
