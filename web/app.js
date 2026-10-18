@@ -384,7 +384,7 @@ authPanel.addEventListener("drop", (e) => {
 /** Remplit le sélecteur d'ENT avec ce que pronotepy sait gérer. */
 async function loadEnts() {
   try {
-    const data = await api("/api/auth/ents");
+    const data = await api("/api/auth/options");
     const select = $("pwdEnt");
     for (const nom of data.ents || []) {
       const option = document.createElement("option");
@@ -392,6 +392,10 @@ async function loadEnts() {
       option.textContent = nom.replace(/_/g, " ");
       select.append(option);
     }
+    // L'établissement a un ENT : on le présélectionne, l'élève ne choisit
+    // que s'il sait ce qu'il fait. Même logique pour l'adresse PRONOTE.
+    if (data.default_ent) select.value = data.default_ent;
+    if (data.default_url) $("pwdUrl").value = data.default_url;
   } catch {
     /* liste indisponible : on laisse « Aucun », le champ reste utilisable */
   }
