@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 from typing import Any, Iterable, Sequence
 
@@ -37,6 +38,34 @@ _OBJET = re.compile(r"\{.*\}", re.S)
 DOWN_SECONDS = 600
 _LLM_DOWN_UNTIL: float = 0.0
 
+# Le fournisseur compte ses requêtes *simultanées* par compte, pas les threads
+# du serveur. Sans borne, N élèves sur un cache froid envoient leurs lots au
+# même instant et se font refuser en 429 — ce qui, à cause du circuit ouvert,
+# privait tout le monde du LLM. Quatre slots couvrent le débit utile (les lots
+# de résumés partent en série). Mesuré le 18/10/2026 : 4 appels simultanés
+# acceptés, refus au-delà.
+MAX_CONCURRENT_CALLS = 4
+_CALL_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
+
+# Attente maximale d'un slot avant de rendre la main au repli. Les endpoints
+# synchrones partagent le pool de threads du serveur (~40) avec les requêtes
+# qui n'appellent PAS le LLM (liste des devoirs, cocher « fait »). Attendre
+# sans borne derrière quatre appels de 15 s garerait tout le pool et gèlerait
+# aussi ces requêtes-là : mieux vaut un repli déterministe immédiat.
+SLOT_WAIT_SECONDS = 2.0
+
+# « Ralentis », ce n'est pas « en panne ». Un 429/413/422 veut dire : ta requête
+# est arrivée, le fournisseur la refuse pour l'instant (quota, trop d'appels,
+# JSON non conforme). Punir ça dix minutes couperait le service pour un pic d'un
+# instant ; on observe donc une pause courte, partagée, puis on retente.
+PAUSE_SECONDS = 3.0
+_PAUSE_UNTIL: float = 0.0
+
+# Codes qui demandent une pause, pas un circuit ouvert. 400 y figure pour Groq :
+# un JSON non conforme rend `json_validate_failed` (mesuré avec gpt-oss-20b), et
+# ce n'est pas le fournisseur qui est tombé.
+PAUSE_CODES = frozenset({400, 413, 422, 429, 503})
+
 
 def _is_down() -> bool:
     """Vrai tant que le circuit ouvert n'a pas expiré."""
@@ -49,10 +78,22 @@ def _mark_down() -> None:
     _LLM_DOWN_UNTIL = time.monotonic() + DOWN_SECONDS
 
 
+def _is_paused() -> bool:
+    """Vrai pendant la pause qui suit un refus temporaire du fournisseur."""
+    return time.monotonic() < _PAUSE_UNTIL
+
+
+def _mark_paused() -> None:
+    """Impose `PAUSE_SECONDS` de pause partagée après un refus temporaire."""
+    global _PAUSE_UNTIL
+    _PAUSE_UNTIL = time.monotonic() + PAUSE_SECONDS
+
+
 def _reset_down() -> None:
     """Referme le circuit (tests : l'état est un global de module)."""
-    global _LLM_DOWN_UNTIL
+    global _LLM_DOWN_UNTIL, _PAUSE_UNTIL
     _LLM_DOWN_UNTIL = 0.0
+    _PAUSE_UNTIL = 0.0
 
 # Prompt d'extraction repris TEL QUEL du bot en production sur cet établissement.
 _EXTRACT_PROMPT = (
@@ -95,18 +136,30 @@ def _chat(
     timeout: float = 15,
     json_mode: bool = False,
 ) -> str | None:
-    """Un appel OpenAI-compatible. TOUTTE erreur ⇒ None, jamais d'exception.
+    """Un appel OpenAI-compatible. TOUTE erreur ⇒ None, jamais d'exception.
 
     Circuit ouvert : si le LLM a été marqué down (`_LLM_DOWN_UNTIL`), on sort
-    tôt sans appeler le transport. L'échec (timeout, connexion, JSON invalide,
-    `response_format` refusé) ouvre le circuit `DOWN_SECONDS` secondes : on ne
-    refait plus de requête pendant ce laps, ce qui évite les 15 s d'attente
-    répétée à chaque `/retard` tant que le serveur LLM est mort.
+    tôt sans appeler le transport. L'échec franc (timeout, connexion, 5xx,
+    JSON cassé) ouvre le circuit `DOWN_SECONDS` secondes : on ne refait plus de
+    requête pendant ce laps, ce qui évite les 15 s d'attente répétée à chaque
+    `/retard` tant que le serveur LLM est mort.
+
+    Un refus temporaire (429, 413, 422, 503) suit un autre chemin : pause
+    partagée de `PAUSE_SECONDS`, sans circuit ouvert. Voir `_chat_locked`.
+
+    Les appels sortants sont bornés par `_CALL_SLOTS` : le fournisseur limite
+    les requêtes simultanées de notre compte, pas celles de nos threads. Le
+    slot est attendu au plus `SLOT_WAIT_SECONDS` ; au-delà on rend la main au
+    repli sans bloquer le thread du serveur.
     """
     if not cfg.llm_enabled:
         return None
     # Circuit ouvert : le LLM est connu comme injoignable, on ne tente pas.
     if _is_down():
+        return None
+    # Pause en cours : le fournisseur vient de demander de ralentir, on n'ajoute
+    # pas de charge et on rend la main au repli déterministe.
+    if _is_paused():
         return None
     payload: dict[str, Any] = {
         "model": cfg.llm_model,
@@ -116,6 +169,19 @@ def _chat(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+    if not _CALL_SLOTS.acquire(timeout=SLOT_WAIT_SECONDS):
+        # Tous les slots sont occupés : d'autres appels tiennent le fournisseur.
+        # On rend la main au repli au lieu de parquer un thread du serveur.
+        log.warning("aucun slot LLM libre après %.1fs : repli local", SLOT_WAIT_SECONDS)
+        return None
+    try:
+        return _chat_locked(cfg, payload, timeout)
+    finally:
+        _CALL_SLOTS.release()
+
+
+def _chat_locked(cfg: Config, payload: dict[str, Any], timeout: float) -> str | None:
+    """Le transport, une fois un slot d'appel obtenu. Voir `_chat`."""
     try:
         response = httpx.post(
             f"{cfg.llm_base_url.rstrip('/')}/chat/completions",
@@ -127,13 +193,26 @@ def _chat(
         data = response.json()
         msg = data["choices"][0]["message"]
         content = msg.get("content") or msg.get("reasoning_content")
-    except Exception as exc:  # httpx.HTTPError, timeout, JSON cassé, forme inattendue…
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status in PAUSE_CODES:
+            # Le fournisseur répond, il refuse seulement pour l'instant : quota
+            # atteint (429), corps trop gros (413), JSON refusé (400/422),
+            # surcharge passagère (503). On lui laisse un instant et on repart
+            # au lot suivant. Couper dix minutes ici punirait tous les élèves
+            # pour le pic d'un seul.
+            log.warning("LLM à ralentir (%s) : pause de %.0fs", status, PAUSE_SECONDS)
+            _mark_paused()
+            return None
+        log.warning("appel LLM échoué : %s", exc)
+        _mark_down()
+        return None
+    except Exception as exc:  # timeout, connexion, JSON cassé, forme inattendue...
         log.warning("appel LLM échoué : %s", exc)
         # On mémorise l'échec : les clés en échec repartent dans le lot à chaque
         # affichage tant qu'on ne circuit pas. 10 minutes suffisent au redémarrage
         # d'un backend sans pénaliser l'affichage immédiat.
-        global _LLM_DOWN_UNTIL
-        _LLM_DOWN_UNTIL = time.monotonic() + DOWN_SECONDS
+        _mark_down()
         return None
     if not isinstance(content, str) or not content.strip():
         return None
@@ -218,7 +297,10 @@ def _summarize_real(pairs: Sequence[tuple[str, str]], cfg: Config) -> dict[str, 
             json_mode=True,
         )
         if text is None:
-            _mark_down()
+            # `_chat` a déjà classé l'échec : circuit ouvert si le fournisseur
+            # est réellement tombé, simple pause s'il a demandé de ralentir.
+            # Marquer « down » ici transformerait un 429 en panne de dix
+            # minutes pour tout le monde, sur le chemin qui 429 le plus.
             continue
         data = _load_json(text)
         if isinstance(data, dict):
