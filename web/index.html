@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pronote Blocus — Tableau de bord</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">PB</span><span>Pronote<br><b>Blocus</b></span></div>
+      <div class="profile"><div class="avatar">EA</div><div><strong>Emma A.</strong><small>3e B · Lycée Jean Moulin</small></div><button class="dots" aria-label="Ouvrir le menu">•••</button></div>
+      <nav aria-label="Navigation principale">
+        <p class="nav-label">Mon espace</p>
+        <a class="nav-item active" href="#dashboard"><span class="nav-icon">⌂</span> Tableau de bord</a>
+        <a class="nav-item" href="#devoirs"><span class="nav-icon">✓</span> Mes devoirs <em>8</em></a>
+        <a class="nav-item" href="#cours"><span class="nav-icon">▤</span> Cours à rattraper</a>
+        <a class="nav-item" href="#resume"><span class="nav-icon">◷</span> Mon résumé</a>
+        <p class="nav-label second">Préférences</p>
+        <a class="nav-item" href="#matieres"><span class="nav-icon">☆</span> Mes priorités</a>
+        <a class="nav-item" href="#settings"><span class="nav-icon">⚙</span> Réglages</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="sync-dot"></div><span>Synchronisé il y a 8 min</span><button id="refreshBtn" class="refresh" aria-label="Synchroniser">↻</button></div>
+    </aside>
+
+    <main class="content" id="dashboard">
+      <header class="topbar"><button class="mobile-menu" aria-label="Menu">☰</button><div class="breadcrumb"><span>Mon espace</span><b>/</b><strong>Tableau de bord</strong></div><div class="top-actions"><button class="icon-button" aria-label="Notifications">♧<i></i></button><button class="help">?</button></div></header>
+      <section class="welcome"><div><p class="eyebrow">Mardi 14 octobre 2026</p><h1>On reprend tranquillement,<br><span>Emma.</span></h1><p class="subline">Voici ce qui mérite ton attention aujourd'hui.</p></div><div class="week-progress"><div class="progress-label"><span>Semaine 42</span><strong>64% <small>terminé</small></strong></div><div class="progress-track"><span></span></div><p>12 devoirs sur 19 complétés</p></div></section>
+
+      <section class="stats" aria-label="Résumé de la semaine">
+        <article class="stat-card urgent"><div class="stat-icon">!</div><div><span>À rattraper</span><strong>8</strong><small>dont <b>3 urgents</b></small></div></article>
+        <article class="stat-card"><div class="stat-icon blue">◷</div><div><span>Cette semaine</span><strong>5</strong><small>prochains devoirs</small></div></article>
+        <article class="stat-card"><div class="stat-icon green">✓</div><div><span>Déjà fait</span><strong>12</strong><small>depuis le 1er octobre</small></div></article>
+      </section>
+
+      <section class="section-head" id="devoirs"><div><p class="eyebrow">Priorité du jour</p><h2>À rattraper</h2></div><button class="text-button" id="showAll">Voir tout <span>→</span></button></section>
+      <div class="toolbar"><div class="segmented"><button class="segment active" data-filter="all">Tous <span>8</span></button><button class="segment" data-filter="urgent">Urgents <span>3</span></button><button class="segment" data-filter="week">Cette semaine <span>5</span></button></div><label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Rechercher un devoir..."></label></div>
+      <div class="task-list" id="taskList">
+        <article class="task urgent-task" data-level="urgent" data-subject="Mathématiques"><button class="check" aria-label="Marquer comme fait"></button><div class="task-main"><div class="task-title"><h3>Exercices sur les fonctions affines</h3><span class="badge red">Urgent</span></div><p>Mathématiques <i>·</i> Chapitre 4</p></div><div class="task-date"><strong>À rendre</strong><span>Hier</span></div><button class="task-more" aria-label="Options">•••</button></article>
+        <article class="task urgent-task" data-level="urgent" data-subject="Français"><button class="check" aria-label="Marquer comme fait"></button><div class="task-main"><div class="task-title"><h3>Lire et résumer le chapitre 6</h3><span class="badge red">Urgent</span></div><p>Français <i>·</i> Lecture suivie</p></div><div class="task-date"><strong>À rendre</strong><span>Hier</span></div><button class="task-more" aria-label="Options">•••</button></article>
+        <article class="task" data-level="week" data-subject="Histoire-Géo"><button class="check" aria-label="Marquer comme fait"></button><div class="task-main"><div class="task-title"><h3>Carte des grandes découvertes</h3><span class="badge amber">À faire bientôt</span></div><p>Histoire-Géo <i>·</i> Activité 3</p></div><div class="task-date"><strong>À rendre</strong><span>Demain</span></div><button class="task-more" aria-label="Options">•••</button></article>
+        <article class="task" data-level="week" data-subject="Anglais"><button class="check" aria-label="Marquer comme fait"></button><div class="task-main"><div class="task-title"><h3>Préparer l'oral — My daily routine</h3></div><p>Anglais <i>·</i> Expression orale</p></div><div class="task-date"><strong>À rendre</strong><span>Jeudi 16</span></div><button class="task-more" aria-label="Options">•••</button></article>
+      </div>
+      <div class="empty" id="emptyState" hidden>Aucun devoir ne correspond à ta recherche.</div>
+      <section class="lower-grid"><article class="panel catchup" id="cours"><div class="panel-heading"><div><p class="eyebrow">À ne pas oublier</p><h2>Cours à rattraper</h2></div><span class="panel-count">2</span></div><div class="course-row"><div class="course-icon purple">SVT</div><div><strong>La reproduction humaine</strong><span>Sciences de la vie · 2 ressources</span></div><button>→</button></div><div class="course-row"><div class="course-icon orange">HG</div><div><strong>La Révolution française</strong><span>Histoire-Géo · 1 ressource</span></div><button>→</button></div><a class="panel-link" href="#cours">Voir les cours à rattraper <span>→</span></a></article><article class="panel priorities" id="matieres"><div class="panel-heading"><div><p class="eyebrow">Ton organisation</p><h2>Matières prioritaires</h2></div><button class="edit">Modifier</button></div><div class="subject-list"><div><span class="rank">01</span><b>Mathématiques</b><span class="dots-bar"><i></i><i></i><i></i></span></div><div><span class="rank">02</span><b>Français</b><span class="dots-bar"><i></i><i></i><i></i></span></div><div><span class="rank">03</span><b>Histoire-Géo</b><span class="dots-bar"><i></i><i></i><i></i></span></div></div><p class="tip">Les matières prioritaires apparaissent en premier dans tes devoirs.</p></article></section>
+      <footer><span>Pronote Blocus <b>·</b> un pas après l'autre.</span><span>Connecté à PRONOTE <i class="footer-dot"></i></span></footer>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
