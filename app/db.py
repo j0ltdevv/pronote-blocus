@@ -483,11 +483,22 @@ def replace_items(conn: sqlite3.Connection, user_id: str, items: list) -> int:
                 for it in items
             ],
         )
-        conn.execute(
-            "DELETE FROM items WHERE user_id = ? AND source <> 'cahier_de_textes'"
-            " AND fetched_at < ?",
-            (user_id, stamp),
-        )
+        # Purge par CLÉ, pas par horodatage : `now_iso()` est à la seconde,
+        # donc deux passes rapprochées partagent le même stamp et le
+        # `fetched_at < stamp` ne supprimait jamais rien (doublons à vie).
+        keys = [it.key for it in items]
+        if keys:
+            marks = ",".join("?" * len(keys))
+            conn.execute(
+                "DELETE FROM items WHERE user_id = ? AND source <> 'cahier_de_textes'"
+                f" AND key NOT IN ({marks})",
+                (user_id, *keys),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM items WHERE user_id = ? AND source <> 'cahier_de_textes'",
+                (user_id,),
+            )
     return len(items)
 
 
