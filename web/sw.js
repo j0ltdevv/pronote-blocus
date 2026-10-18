@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v7 : mode d'emploi QR + garanties */
+/* v8 : mobile d'abord (cibles 44px, texte 15px) */
 
-const CACHE_NAME = 'pronote-blocus-v7';
-const API_CACHE = 'pronote-blocus-api-v7';
+const CACHE_NAME = 'pronote-blocus-v8';
+const API_CACHE = 'pronote-blocus-api-v8';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
