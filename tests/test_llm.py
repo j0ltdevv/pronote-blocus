@@ -519,6 +519,122 @@ def test_reponse_de_forme_inattendue_ne_remonte_jamais(cfg, http):
     assert _chat_once(cfg) is None
 
 
+def _status_error(status: int) -> httpx.HTTPStatusError:
+    return httpx.HTTPStatusError(
+        str(status),
+        request=httpx.Request("POST", "http://127.0.0.1:9/v1/chat/completions"),
+        response=httpx.Response(status),
+    )
+
+
+@pytest.mark.parametrize("status", [400, 413, 422, 429, 503])
+def test_un_refus_temporaire_pause_sans_couper_le_service(cfg, http, status):
+    """429/413/422/400/503 : « ralentis », pas « en panne ».
+
+    Couper le service dix minutes sur un 429 privait tous les élèves d'IA pour
+    le pic d'un seul instant — et sur le chemin des résumés, qui 429 le plus.
+    """
+    http.error = _status_error(status)
+
+    assert _chat_once(cfg) is None
+    assert not llm._is_down()
+    assert llm._is_paused()
+
+
+def test_la_pause_ne_ressert_pas_le_fournisseur(cfg, http):
+    """Pendant la pause, aucune requête ne part : c'est tout l'intérêt."""
+    http.error = _status_error(429)
+    assert _chat_once(cfg) is None
+
+    http.calls.clear()
+    http.response = _Response(_message_payload(content="trop tard"))
+
+    assert _chat_once(cfg) is None
+    assert http.calls == []
+
+
+def test_une_panne_franche_ouvre_le_circuit(cfg, http):
+    """500 et coupure réseau restent des pannes : le circuit s'ouvre."""
+    http.error = _status_error(500)
+
+    assert _chat_once(cfg) is None
+    assert llm._is_down()
+    assert not llm._is_paused()
+
+
+def test_un_lot_de_resumes_rate_limite_ne_coupe_pas_le_service(cfg, http, conn, make_user):
+    """Le chemin des résumés ne doit pas transformer un 429 en panne de 10 min."""
+    user = make_user()
+    item = _item("Maths", "Exercices 12 à 18 page 47", kind="devoir", source="travail_a_faire")
+    http.error = _status_error(429)
+
+    resultat = llm.ensure_summaries(conn, [item], cfg)
+
+    assert resultat[item.key]["summary"] == item.body
+    assert not llm._is_down()
+
+
+def test_les_appels_simultanes_sont_bornees(cfg, monkeypatch):
+    """Le fournisseur compte nos requêtes simultanées, pas nos threads."""
+    import threading
+    import time as _time
+
+    en_vol = 0
+    maximum = 0
+    verrou = threading.Lock()
+
+    def post(url, **kwargs):  # noqa: ANN001, ANN202
+        nonlocal en_vol, maximum
+        with verrou:
+            en_vol += 1
+            maximum = max(maximum, en_vol)
+        _time.sleep(0.05)
+        with verrou:
+            en_vol -= 1
+        return _Response(_message_payload(content="ok"))
+
+    monkeypatch.setattr(llm.httpx, "post", post)
+
+    threads = [threading.Thread(target=_chat_once, args=(cfg,)) for _ in range(16)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert maximum <= llm.MAX_CONCURRENT_CALLS
+    assert maximum == llm.MAX_CONCURRENT_CALLS
+
+
+def test_slots_occupees_rendent_la_main_au_lieu_de_bloquer(cfg, monkeypatch):
+    """Sans attente bornée, quatre appels de 15 s gèreraient tout le pool.
+
+    `ensure_summaries` est appelé depuis des endpoints synchrones : le thread
+    qui attend un slot est un thread qui ne sert plus la liste des devoirs.
+    """
+    import threading
+    import time as _time
+
+    debut = threading.Event()
+
+    def post(url, **kwargs):  # noqa: ANN001, ANN202
+        debut.wait(5)
+        return _Response(_message_payload(content="ok"))
+
+    monkeypatch.setattr(llm.httpx, "post", post)
+
+    # On sature les slots avec des appels qui ne rendent pas la main.
+    for _ in range(llm.MAX_CONCURRENT_CALLS):
+        threading.Thread(target=_chat_once, args=(cfg,), daemon=True).start()
+    _time.sleep(0.2)
+
+    t0 = _time.monotonic()
+    assert _chat_once(cfg) is None
+    ecoule = _time.monotonic() - t0
+
+    debut.set()
+    assert ecoule < llm.SLOT_WAIT_SECONDS + 1.5, f"attente trop longue : {ecoule:.1f}s"
+
+
 def test_une_panne_donne_le_repli_sans_exception(cfg, http, conn):
     http.error = httpx.ConnectError("réseau coupé")
     item = _item("SVT", "Lire le chapitre 2", kind="devoir", source="travail_a_faire")
