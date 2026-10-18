@@ -102,6 +102,7 @@ async function api(path, opts = {}) {
 /** Oublie la session locale et rend la main à l'écran de connexion. */
 function signOut() {
   token = null;
+  document.body.classList.add("is-guest");
   sessionId = null;
   items = [];
   sessionStorage.removeItem("pronote_token");
@@ -152,15 +153,14 @@ function itemCard(item) {
     <article class="document-card${item.done ? " is-done" : ""}" data-id="${id}">
       <div class="doc-top">
         <span class="file-icon ${late ? "pdf" : "doc"}">${badge}</span>
-        <button class="favorite${item.done ? " active" : ""}" data-done="${id}"
-                aria-pressed="${item.done ? "true" : "false"}"
-                aria-label="${item.done ? "Marquer à refaire" : "Marquer comme fait"}">${item.done ? "★" : "☆"}</button>
+        <span class="done-mark${item.done ? " active" : ""}" title="${item.done ? "Fait" : "À faire"}"
+              aria-label="${item.done ? "Fait" : "À faire"}">${item.done ? "★" : "☆"}</span>
       </div>
       <h3>${title}</h3>
       <p>${subject} <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
       <div class="doc-footer">
         <span>${abs || "—"}</span>
-        <button class="open-doc" data-done="${id}">${item.done ? "Refaire" : "Fait"} <span>→</span></button>
+        <button class="open-doc" data-done="${id}">${item.done ? "↺ Refaire" : "✓ Marquer fait"}</button>
       </div>
     </article>
   `;
@@ -294,6 +294,8 @@ document.querySelectorAll("[data-filter]").forEach((link) => {
 });
 
 // ── Auth : QR ─────────────────────────────────────────────────────────
+$("qrBtn").addEventListener("click", () => $("qrFile").click());
+
 $("qrFile").addEventListener("change", (e) => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -344,6 +346,7 @@ $("pinForm").addEventListener("submit", async (e) => {
     });
     token = data.token;
     sessionStorage.setItem("pronote_token", token);
+    document.body.classList.remove("is-guest");
     hide("authPin");
     if (Array.isArray(data.subjects) && data.subjects.length) {
       $("profileName").textContent = data.subjects.length + " matières";
@@ -414,6 +417,7 @@ $("logoutBtn").addEventListener("click", () => logout());
 
 // ── Init ──────────────────────────────────────────────────────────────
 async function init() {
+  document.body.classList.toggle("is-guest", !token);
   if (token) {
     await loadItems();
   } else {

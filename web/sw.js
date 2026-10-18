@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v4 : design v0 (espace élève) porté sur l'app branchée */
+/* v5 : mode invité + actions explicites */
 
-const CACHE_NAME = 'pronote-blocus-v4';
-const API_CACHE = 'pronote-blocus-api-v4';
+const CACHE_NAME = 'pronote-blocus-v5';
+const API_CACHE = 'pronote-blocus-api-v5';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
