@@ -1068,6 +1068,11 @@ def test_admin_active_mot_de_passe_et_connexion_sans_qr(
         assert any(name == "deleteMessage" for name, _ in rig.fake.sent)
         assert all("s3cret" not in text for text in rig.fake.texts())
 
+        # La permission est à usage unique : un texte libre après la connexion
+        # part au LLM, il ne relance pas le parcours mot de passe.
+        texts = await rig.text("et pour demain ?")
+        assert not any("Envoie ton mot de passe" in t for t in texts), texts
+
     run_flow(cfg, conn, scenario)
 
     assert len(calls) == 1
