@@ -20,14 +20,23 @@ import json
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app import crypto, db
 from app.config import Config
 from app.pronote import auth, fetch
 
-from ..deps import CfgDep, DBDep, UserDep, issue_token, revoke_token, sessions
+from ..deps import (
+    COOKIE_NAME,
+    TOKEN_TTL_SECONDS,
+    CfgDep,
+    DBDep,
+    UserDep,
+    issue_token,
+    revoke_token,
+    sessions,
+)
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -198,6 +207,7 @@ def post_qr(body: QrIn) -> QrOut:
 @router.post("/pin", response_model=PinOut)
 def post_pin(
     body: PinIn,
+    response: Response,
     conn: DBDep,
     cfg: CfgDep,
 ) -> PinOut:
@@ -243,19 +253,33 @@ def post_pin(
         pass
 
     subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
-    return PinOut(user_id=user_id, token=issue_token(user_id), subjects=subjects)
+    token = issue_token(user_id, conn)
+    # Cookie httpOnly : le navigateur se reconnecte seul pendant 90 jours,
+    # y compris après un redémarrage du serveur. `secure` est posé quand la
+    # requête arrive en HTTPS (l'instance LAN en HTTP simple ne le permet pas).
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=TOKEN_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=response.headers.get("x-forwarded-proto") == "https" or False,
+        path="/",
+    )
+    return PinOut(user_id=user_id, token=token, subjects=subjects)
 
 
 # ── 3. déconnexion ─────────────────────────────────────────────────────
 
 
 @router.post("/logout")
-def post_logout(user: UserDep, conn: DBDep) -> dict[str, Any]:
+def post_logout(user: UserDep, response: Response, conn: DBDep) -> dict[str, Any]:
     """Révoque le jeton présenté et supprime le compte de l'appelant.
 
     Le compte visé est toujours celui du jeton : impossible de déconnecter
     (donc d'effacer) l'élève connecté ailleurs.
     """
-    revoke_token(user.token)
+    revoke_token(user.token, conn)
+    response.delete_cookie(COOKIE_NAME, path="/")
     db.delete_user(conn, user.user_id)
     return {"ok": True}

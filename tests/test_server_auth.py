@@ -48,7 +48,7 @@ def client(tmp_path, monkeypatch):
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setattr(deps, "_conn", None)
     monkeypatch.setattr(deps, "_cfg", None)
-    monkeypatch.setattr(deps, "_tokens", {})
+    monkeypatch.setattr(deps, "_MEMORY", {})
     monkeypatch.setattr(deps, "_SESSIONS", {})
 
     # Import paresseux : `server.main` ouvre la base au chargement, il doit donc
@@ -97,6 +97,11 @@ def _compte(conn, *, chat_id: int, subject: str, titre: str) -> tuple[str, str]:
     )
     db.replace_items(conn, user_id, [_devoir(subject, titre)])
     return user_id, deps.issue_token(user_id)
+
+
+def dep_cookie(client):
+    """Valeur du cookie de session posé par `/api/auth/pin`, ou None."""
+    return client.cookies.get(deps.COOKIE_NAME)
 
 
 def _entete(jeton: str) -> dict[str, str]:
@@ -349,7 +354,13 @@ def test_pin_delivre_un_jeton_exploitable(client, conn, pronote_hors_ligne):
     assert liste.json() == []
     assert db.get_user(conn, corps["user_id"]) is not None
 
-    # Le jeton est bien la seule clé : sans lui, rien.
+    # Le cookie httpOnly est posé par /pin : il vaut jeton à lui seul, c'est
+    # ce qui permet à l'élève de rester connecté sans refaire un QR.
+    assert dep_cookie(client) is not None
+    assert client.get("/api/items").status_code == 200
+
+    # Sans en-tête NI cookie, rien n'est accessible.
+    client.cookies.clear()
     assert client.get("/api/items").status_code == 401
 
 
@@ -365,6 +376,28 @@ def test_deux_logins_donnent_deux_jetons_independants(client, conn, pronote_hors
     # Le compte est supprimé : les deux jetons tombent d'un coup.
     assert client.get("/api/items", headers=_entete(jeton_un)).status_code == 401
     assert client.get("/api/items", headers=_entete(jeton_deux)).status_code == 401
+
+
+def test_la_session_survit_a_un_redemarrage(client, conn, pronote_hors_ligne):
+    """Le jeton est en base : vider la mémoire ne déconnecte pas l'élève.
+
+    Sans cette persistance, chaque redémarrage du serveur — et chaque
+    expiration à 24 h — obligeait à régénérer un QR, donc à retrouver un
+    ordinateur. Une fois le QR fait, le cookie suffit.
+    """
+    qr = client.post("/api/auth/qr", json={"pronote_url": PRONOTE_URL}).json()
+    reponse = client.post(
+        "/api/auth/pin", json={"session_id": qr["session_id"], "pin": "1234"}
+    )
+    assert reponse.status_code == 200
+    jeton = reponse.json()["token"]
+
+    # Redémarrage simulé : tout ce qui vivait en mémoire disparaît.
+    deps._MEMORY.clear()
+    client.cookies.clear()
+
+    assert deps.resolve_token(jeton, conn) is not None
+    assert client.get("/api/items", headers=_entete(jeton)).status_code == 200
 
 
 # ── CORS ───────────────────────────────────────────────────────────────
