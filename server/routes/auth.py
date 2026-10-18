@@ -54,6 +54,19 @@ class QrIn(BaseModel):
     )
 
 
+class PasswordIn(BaseModel):
+    """Connexion directe identifiant + mot de passe (repli sans ordinateur).
+
+    `ent` nomme le fournisseur d'identités (`lyceeconnecte_aquitaine`,
+    `laclasse_educonnect`…), laissé vide quand PRONOTE authentifie lui-même.
+    """
+
+    pronote_url: str
+    username: str
+    password: str
+    ent: str | None = None
+
+
 class QrOut(BaseModel):
     session_id: str
     qr_image_base64: str
@@ -201,7 +214,102 @@ def post_qr(body: QrIn) -> QrOut:
     return QrOut(session_id=session_id, qr_image_base64=_render_qr_png(qr))
 
 
-# ── 2. PIN ─────────────────────────────────────────────────────────────
+# ── 2 bis. identifiant + mot de passe (repli téléphone) ────────────────
+
+
+def _ent_function(name: str | None):
+    """Résout `pronotepy.ent.<name>` en callable, ou None."""
+    if not name:
+        return None
+    import pronotepy.ent as ent_module
+
+    fonction = getattr(ent_module, name, None)
+    if fonction is None or not callable(fonction):
+        raise HTTPException(400, f"ENT inconnu : {name}")
+    return fonction
+
+
+@router.get("/ents")
+def get_ents() -> dict[str, list[str]]:
+    """Liste des ENT gérés par pronotepy (pour le sélecteur du formulaire)."""
+    import pronotepy.ent as ent_module
+
+    # Les handlers sont soit des fonctions, soit des `functools.partial`
+    # (module `functools`) : on garde tout ce qui est appelable et public.
+    noms = sorted(
+        n
+        for n in dir(ent_module)
+        if not n.startswith("_") and callable(getattr(ent_module, n, None))
+    )
+    return {"ents": noms}
+
+
+@router.post("/password", response_model=PinOut)
+def post_password(
+    body: PasswordIn,
+    request: Request,
+    response: Response,
+    conn: DBDep,
+    cfg: CfgDep,
+) -> PinOut:
+    """Connexion par identifiant + mot de passe, pour qui n'a pas d'ordinateur.
+
+    Le mot de passe ne sert qu'à cette requête : il est échangé contre les
+    credentials exportés par PRONOTE, puis chiffré en base (Fernet).
+    """
+    if not cfg.allow_password_login:
+        raise HTTPException(403, "La connexion par mot de passe est désactivée.")
+
+    username = body.username.strip()
+    if not username or not body.password:
+        raise HTTPException(400, "Identifiant et mot de passe requis.")
+
+    import pronotepy
+
+    ent = _ent_function(body.ent)
+    app_uuid = crypto.new_app_uuid()
+    try:
+        client, creds = auth.login_with_password(
+            body.pronote_url, username, body.password, app_uuid, ent=ent
+        )
+    except pronotepy.MFAError as exc:
+        raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
+    except Exception as exc:
+        raise HTTPException(
+            401,
+            "Connexion refusée. Si ton lycée passe par un ENT (EduConnect, "
+            "Lycée Connecté…), choisis-le dans la liste : le mot de passe seul "
+            "ne suffit pas.",
+        ) from exc
+
+    if getattr(client, "logged_in", True) is False:
+        raise HTTPException(401, "Identifiants refusés par PRONOTE.")
+
+    pronote_url = body.pronote_url
+    class_name = fetch.class_name_of(client)
+    user_id = _find_or_create(
+        conn, cfg, pronote_url, username, creds, class_name, None
+    )
+    fetch.collect(client, conn, user_id, cfg, "items")
+    subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
+    token = issue_token(user_id, conn)
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=TOKEN_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=(
+            request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+        ),
+        path="/",
+    )
+    return PinOut(user_id=user_id, token=token, subjects=subjects)
+
+
+# ── 3. PIN ─────────────────────────────────────────────────────────────
+
 
 
 @router.post("/pin", response_model=PinOut)

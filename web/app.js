@@ -379,6 +379,58 @@ authPanel.addEventListener("drop", (e) => {
 });
 
 // ── Auth : PIN ────────────────────────────────────────────────────────
+/* ── connexion sans ordinateur : identifiant + mot de passe ──────────── */
+
+/** Remplit le sélecteur d'ENT avec ce que pronotepy sait gérer. */
+async function loadEnts() {
+  try {
+    const data = await api("/api/auth/ents");
+    const select = $("pwdEnt");
+    for (const nom of data.ents || []) {
+      const option = document.createElement("option");
+      option.value = nom;
+      option.textContent = nom.replace(/_/g, " ");
+      select.append(option);
+    }
+  } catch {
+    /* liste indisponible : on laisse « Aucun », le champ reste utilisable */
+  }
+}
+
+$("pwdForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = $("pwdStatus");
+  const url = $("pwdUrl").value.trim();
+  const username = $("pwdUser").value.trim();
+  const password = $("pwdPass").value;
+  const ent = $("pwdEnt").value || null;
+  if (!url || !username || !password) {
+    status.textContent = "Remplis les quatre champs.";
+    return;
+  }
+  status.textContent = "";
+  $("pwdBtn").disabled = true;
+  try {
+    const data = await api("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ pronote_url: url, username, password, ent }),
+    });
+    token = data.token;
+    sessionStorage.setItem("pronote_token", token);
+    $("pwdPass").value = "";
+    document.body.classList.remove("is-guest");
+    hide("authQr", "authPin");
+    if (Array.isArray(data.subjects) && data.subjects.length) {
+      $("profileName").textContent = data.subjects.length + " matières";
+    }
+    await loadItems();
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    $("pwdBtn").disabled = false;
+  }
+});
+
 $("pinInput").addEventListener("input", (e) => {
   e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4);
 });
@@ -486,6 +538,7 @@ sidebar.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) se
 
 // ── Init ──────────────────────────────────────────────────────────────
 async function init() {
+  loadEnts();
   document.body.classList.toggle("is-guest", !token);
   if (token) {
     await loadItems();
