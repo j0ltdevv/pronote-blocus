@@ -415,6 +415,21 @@ refreshBtn.addEventListener("click", () => doRefresh(refreshBtn));
 topRefresh.addEventListener("click", () => doRefresh(topRefresh));
 $("logoutBtn").addEventListener("click", () => logout());
 
+// ── Menu mobile (tiroir) ──────────────────────────────────────────────
+const sidebar = document.querySelector(".sidebar");
+const navOverlay = $("navOverlay");
+
+function setMenu(open) {
+  sidebar.classList.toggle("open", open);
+  navOverlay.hidden = !open;
+  $("menuBtn").setAttribute("aria-expanded", String(open));
+}
+
+$("menuBtn").addEventListener("click", () => setMenu(!sidebar.classList.contains("open")));
+navOverlay.addEventListener("click", () => setMenu(false));
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+sidebar.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) setMenu(false); });
+
 // ── Init ──────────────────────────────────────────────────────────────
 async function init() {
   document.body.classList.toggle("is-guest", !token);
