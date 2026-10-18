@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v5 : mode invité + actions explicites */
+/* v6 : tiroir de navigation mobile */
 
-const CACHE_NAME = 'pronote-blocus-v5';
-const API_CACHE = 'pronote-blocus-api-v5';
+const CACHE_NAME = 'pronote-blocus-v6';
+const API_CACHE = 'pronote-blocus-api-v6';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
