@@ -103,7 +103,7 @@
             <div>
               <p class="col-title no">Il ne fait jamais</p>
               <ul class="cross-list">
-                <li>Conserver ton mot de passe : il est échangé une fois contre un jeton d'appareil, puis oublié.</li>
+                <li>Garder ton mot de passe lisible : il est chiffré en base, et supprimé à la déconnexion.</li>
                 <li>Cocher un devoir, marquer un message comme lu ou envoyer quoi que ce soit dans PRONOTE.</li>
                 <li>Publier, partager ou revendre tes données.</li>
                 <li>Garder ton code à 4 chiffres : il sert une fois, puis il est oublié.</li>
@@ -145,24 +145,21 @@
             que ton établissement t'a donnés.
           </p>
           <form id="pwdForm" class="pwd-form">
-            <label>Adresse PRONOTE
-              <input id="pwdUrl" type="url" required placeholder="https://0XXXXXXX.index-education.net/pronote/eleve.html">
-            </label>
-            <label>Ton ENT (si ton lycée en a un)
-              <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
-            </label>
-            <label>Identifiant
-              <input id="pwdUser" type="text" required autocomplete="username">
-            </label>
-            <label>Mot de passe
-              <input id="pwdPass" type="password" required autocomplete="current-password">
-            </label>
+            <label for="pwdUrl">Adresse PRONOTE</label>
+            <input id="pwdUrl" type="url" placeholder="préremplie par l'établissement">
+            <label for="pwdEnt">Ton ENT (si ton lycée en a un)</label>
+            <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
+            <label for="pwdUser">Identifiant</label>
+            <input id="pwdUser" type="text" required autocomplete="username">
+            <label for="pwdPass">Mot de passe</label>
+            <input id="pwdPass" type="password" required autocomplete="current-password">
             <button id="pwdBtn" type="submit" class="open-doc primary-action">Se connecter →</button>
-            <p class="status" id="pwdStatus"></p>
+            <p class="status" id="pwdStatus" role="status" aria-live="polite"></p>
           </form>
           <p class="hint">
-            Le mot de passe sert une seule fois : PRONOTE le remplace par un jeton
-            d'appareil, chiffré en base. Il n'est jamais écrit dans un journal.
+            Ton mot de passe est <strong>chiffré en base</strong> : PRONOTE en a besoin
+            pour renouveler la session, donc il est conservé — jamais en clair, jamais
+            dans un journal. La déconnexion supprime le compte et ce mot de passe.
           </p>
         </details>
       </section>

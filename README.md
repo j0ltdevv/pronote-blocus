@@ -6,8 +6,8 @@ que j'ai à rattraper ? »**, trié par urgence, à partir des cinq onglets PRON
 pièces jointes).
 
 Le produit est la **PWA** (`web/` + `server/`, FastAPI) : elle s'ouvre depuis un
-téléphone, s'installe sur l'écran d'accueil, et ne demande jamais le mot de
-passe PRONOTE — la connexion se fait par QR code. Un **bot Telegram** répond au
+téléphone, s'installe sur l'écran d'accueil. La connexion se fait par QR code,
+ou par identifiant + mot de passe (voir « Se connecter »). Un **bot Telegram** répond au
 même moteur ; il reste disponible en option, mais les lycéens ne l'utilisent pas.
 
 Rien n'est jamais écrit dans PRONOTE : l'application est **strictement en
@@ -89,13 +89,44 @@ Une donnée de plus de 12 h déclenche une relecture PRONOTE avant l'envoi.
 envoyée** (retard, résumé du jour, synthèse de semaine) : la numérotation est
 réécrite à chaque envoi, un numéro périmé répond « renvoie /retard ».
 
-## Réglages (environnement, web et bot)
+## Se connecter
+
+### Par QR code (ordinateur, appareil photo)
+
+1. Depuis l'ordinateur, ouvrez l'Espace Élève PRONOTE.
+2. Cliquez sur le bouton QR → notez le code à 4 chiffres.
+3. Sur le téléphone, ouvrez Blocus → collez la capture du QR.
+4. Saisissez le code à 4 chiffres → la liste s'affiche.
+
+### Par identifiant + mot de passe (sans ordinateur)
+
+Le QR n'existe que sur la version bureau de PRONOTE : un élève sans ordinateur
+passe par ce second chemin. Il faut `ALLOW_PASSWORD_LOGIN=1` (défaut).
+
+1. Sur le téléphone, ouvrez Blocus → « Pas d'ordinateur sous la main ? ».
+2. L'adresse PRONOTE et l'ENT (`PASSWORD_ENT`) sont **préremplis** : l'élève ne
+   saisit que son identifiant et son mot de passe.
+3. Dans ce mode, PRONOTE ne délivre aucun jeton d'appareil : le mot de passe est
+   donc **conservé chiffré** (Fernet) dans `users.token_enc`, jamais en clair ni
+   dans un journal. La déconnexion supprime le compte et ce mot de passe.
+
+### Durée de la session
+
+Une fois connecté, le jeton est **haché en base** (`web_sessions`) et posé dans
+un cookie `httpOnly` : l'élève reste connecté **90 jours**, y compris après un
+redémarrage du serveur. Le QR — ou les identifiants — ne servent donc qu'une
+fois par trimestre. `Authorization: Bearer` reste prioritaire sur le cookie ; le
+cookie ne sert que de repli quand aucun en-tête n'est présent.
+
+## Configuration (environnement, web et bot)
 
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | obligatoire |
 | `APP_SECRET` | — | obligatoire, clé Fernet |
 | `ADMIN_CHAT_ID` | vide | `/qui`, `/mdp` |
+| `ALLOW_PASSWORD_LOGIN` | `1` | activer (`1`/`true`) ou désactiver (`0`/`false`) la connexion par mot de passe |
+| `PASSWORD_ENT` | `lyceeconnecte_aquitaine` | ENT par défaut pour la connexion par mot de passe |
 | `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage ; elle court jusqu'à aujourd'hui + 45 jours (`FORWARD_DAYS`) |
 | `DEFAULT_PRONOTE_URL` | `https://0332722e.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
 | `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile ; lu en config mais **non appliqué** à la connexion (voir « Limites connues ») |
