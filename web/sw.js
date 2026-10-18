@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v10 : consigne adaptée mobile / ordinateur */
+/* v11 : procédure QR réelle (session PRONOTE requise) */
 
-const CACHE_NAME = 'pronote-blocus-v10';
-const API_CACHE = 'pronote-blocus-api-v10';
+const CACHE_NAME = 'pronote-blocus-v11';
+const API_CACHE = 'pronote-blocus-api-v11';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
