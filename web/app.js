@@ -1,13 +1,14 @@
-// Pronote Blocus PWA — frontend logic
+// Pronote Blocus PWA — logique frontend
+//
+// Design : coquille « espace élève » (sidebar + cartes). La logique est
+// inchangée : jeton opaque en sessionStorage, API same-origin, chat libre.
 
 const API = "";  // same origin
-// Le serveur ne rend qu'un jeton opaque : l'identité de l'élève n'existe que
-// côté serveur, attachée à ce jeton. sessionStorage : le jeton ne persiste que
-// pour la durée de l'onglet, jamais sur le disque du navigateur.
 let token = sessionStorage.getItem("pronote_token") || null;
 sessionStorage.removeItem("pronote_user_id");  // clé de la version sans jeton
 let sessionId = null;
 let items = [];
+let filter = "all";
 
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -15,6 +16,7 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
 const chatMessages = $("chatMessages");
 const refreshBtn = $("refreshBtn");
+const topRefresh = $("topRefresh");
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function show(...ids) {
@@ -43,6 +45,15 @@ function showNotice(message) {
 }
 function clearNotice() {
   $("notice").classList.add("hidden");
+}
+
+let toastTimer = null;
+function toast(message) {
+  const el = $("toast");
+  el.textContent = message;
+  el.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-visible"), 2600);
 }
 
 // ── Dates ─────────────────────────────────────────────────────────────
@@ -88,7 +99,7 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-/** Oublie la session locale (jeton + données affichées) et rend la main à l'écran de connexion. */
+/** Oublie la session locale et rend la main à l'écran de connexion. */
 function signOut() {
   token = null;
   sessionId = null;
@@ -97,11 +108,17 @@ function signOut() {
   $("qrStatus").textContent = "";
   $("pinStatus").textContent = "";
   chatMessages.innerHTML = "";
-  hide("homework", "empty", "loading", "chatFooter", "chatMessages", "authPin");
+  hide("homework", "empty", "loading", "chat");
   show("authQr");
+  $("summaryTitle").textContent = "Bonjour.";
+  $("summaryMeta").textContent = "Connecte ton compte pour voir tes devoirs.";
+  $("profileName").textContent = "Mon compte";
+  $("profileMeta").textContent = "PRONOTE";
+  $("syncLabel").textContent = "Pas encore synchronisé";
+  updateCounts({ late: 0, soon: 0, done: 0, all: 0 });
 }
 
-/** Révoque la session côté serveur (compte supprimé) puis nettoie le client. */
+/** Révoque la session côté serveur puis nettoie le client. */
 async function logout() {
   try {
     await api("/api/auth/logout", { method: "POST" });
@@ -115,34 +132,37 @@ function fetchItems() {
   return api("/api/items");
 }
 
-// ── Render items ──────────────────────────────────────────────────────
-function itemRow(item) {
+// ── Render cards ──────────────────────────────────────────────────────
+const KIND_LABEL = { devoir: "DM", controle: "DS", cours: "CRS", message: "MSG" };
+
+function itemCard(item) {
   const day = parseDay(item.due);
   const diff = day ? dayDiff(day) : null;
   const rel = day ? relativeLabel(diff) : "sans date";
   const abs = day
     ? day.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
     : "";
-  const hot = !item.done && ((diff !== null && diff < 0) || item.urgent);
+  const late = !item.done && diff !== null && diff < 0;
   const id = escapeHtml(item.id);
   const subject = escapeHtml(item.subject);
   const title = escapeHtml(item.title);
+  const badge = KIND_LABEL[item.kind] || "DOC";
 
   return `
-    <li class="row${item.done ? " is-done" : ""}" data-id="${id}">
-      <div class="when${hot ? " is-hot" : ""}">
-        <span class="when-rel">${rel}</span>
-        ${abs ? `<span class="when-abs">${abs}</span>` : ""}
+    <article class="document-card${item.done ? " is-done" : ""}" data-id="${id}">
+      <div class="doc-top">
+        <span class="file-icon ${late ? "pdf" : "doc"}">${badge}</span>
+        <button class="favorite${item.done ? " active" : ""}" data-done="${id}"
+                aria-pressed="${item.done ? "true" : "false"}"
+                aria-label="${item.done ? "Marquer à refaire" : "Marquer comme fait"}">${item.done ? "★" : "☆"}</button>
       </div>
-      <div class="what">
-        <p class="subject">${subject}</p>
-        <p class="task"><span class="task-text">${title}</span></p>
+      <h3>${title}</h3>
+      <p>${subject} <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
+      <div class="doc-footer">
+        <span>${abs || "—"}</span>
+        <button class="open-doc" data-done="${id}">${item.done ? "Refaire" : "Fait"} <span>→</span></button>
       </div>
-      <button class="check" type="button" data-done="${id}" aria-pressed="${item.done ? "true" : "false"}"
-              aria-label="Fait : ${subject}, ${title}">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path pathLength="1" d="M5.5 12.5l4.2 4.2L18.5 7.5" /></svg>
-      </button>
-    </li>
+    </article>
   `;
 }
 
@@ -154,47 +174,55 @@ function byDue(a, b) {
   return 0;
 }
 
-function render() {
-  if (items.length === 0) {
-    hide("homework");
-    show("empty");
-    return;
-  }
-  hide("empty");
+function updateCounts({ late, soon, done, all }) {
+  $("navAll").textContent = all;
+  $("navLate").textContent = late;
+  $("navSoon").textContent = soon;
+  $("navDone").textContent = done;
+  $("orbitCount").textContent = `${all} ${plural(all, "devoir", "devoirs")}`;
+}
 
+function render() {
   const today = startOfToday();
-  const overdue = [], upcoming = [], done = [];
+  const late = [], soon = [], done = [];
   for (const it of items) {
     const day = parseDay(it.due);
     if (it.done) done.push(it);
-    else if (day && day < today) overdue.push(it);
-    else upcoming.push(it);
+    else if (day && day < today) late.push(it);
+    else soon.push(it);
   }
-  overdue.sort(byDue);
-  upcoming.sort(byDue);
+  late.sort(byDue);
+  soon.sort(byDue);
 
-  // Summary
-  const late = overdue.length;
-  $("summaryTitle").textContent = late > 0
-    ? `${late} ${plural(late, "devoir", "devoirs")} en retard`
-    : upcoming.length > 0 ? "Plus rien en retard" : "Tout est fait";
+  updateCounts({ late: late.length, soon: soon.length, done: done.length, all: items.length });
+
+  const lateWord = plural(late.length, "devoir", "devoirs");
+  $("summaryTitle").textContent = late.length
+    ? `${late.length} ${lateWord} en retard`
+    : soon.length ? "Plus rien en retard" : "Tout est fait.";
   const meta = [];
-  if (upcoming.length) meta.push(`${upcoming.length} à venir`);
+  if (soon.length) meta.push(`${soon.length} à venir`);
   if (done.length) meta.push(`${done.length} ${plural(done.length, "fait", "faits")}`);
-  $("summaryMeta").textContent = meta.join(", ");
+  $("summaryMeta").textContent = meta.join(" · ") || "Rien à signaler.";
+  $("profileMeta").textContent = `${items.length} ${plural(items.length, "devoir", "devoirs")} suivis`;
 
-  // Groups
   const fill = (name, list) => {
-    const section = $(name + "Section");
-    section.classList.toggle("hidden", list.length === 0);
+    $(name + "Section").classList.toggle("hidden", list.length === 0 || (filter !== "all" && filter !== name));
     $(name + "Count").textContent = list.length ? String(list.length) : "";
-    $(name + "List").innerHTML = list.map(itemRow).join("");
+    $(name + "List").innerHTML = list.map(itemCard).join("");
   };
-  fill("overdue", overdue);
-  fill("upcoming", upcoming);
+  fill("late", late);
+  fill("soon", soon);
   fill("done", done);
 
-  show("homework");
+  if (items.length === 0) {
+    hide("homework");
+    $("empty").textContent = "Rien à afficher pour l'instant. Touche ↻ pour synchroniser.";
+    show("empty");
+  } else {
+    hide("empty");
+    show("homework");
+  }
 }
 
 // ── Load items ────────────────────────────────────────────────────────
@@ -209,14 +237,14 @@ async function loadItems({ silent = false } = {}) {
     clearNotice();
     hide("loading");
     render();
-    show("chatFooter", "chatMessages");
+    show("chat");
+    $("syncLabel").textContent = "Synchronisé à l'instant";
   } catch (e) {
     hide("loading");
     if (items.length) render();
-    show("chatFooter", "chatMessages");
-    // Un 401 a déjà basculé l'écran de connexion : inutile d'expliquer l'échec.
+    show("chat");
     if (token) {
-      showNotice(`Impossible de charger les devoirs (${e.message}). Touche Actualiser pour réessayer.`);
+      showNotice(`Impossible de charger les devoirs (${e.message}). Touche ↻ pour réessayer.`);
     }
   }
 }
@@ -231,18 +259,12 @@ $("homework").addEventListener("click", async (e) => {
 
   const previous = item.done;
   item.done = !previous;
-
-  // Animate in place, then let the row move to its new group
-  btn.closest(".row").classList.toggle("is-done", item.done);
-  btn.setAttribute("aria-pressed", String(item.done));
-  const pause = new Promise((r) => setTimeout(r, REDUCED ? 0 : 450));
+  btn.closest(".document-card").classList.toggle("is-done", item.done);
+  const pause = new Promise((r) => setTimeout(r, REDUCED ? 0 : 320));
 
   try {
     await Promise.all([
-      api("/api/items/done", {
-        method: "POST",
-        body: JSON.stringify({ item_id: id }),
-      }),
+      api("/api/items/done", { method: "POST", body: JSON.stringify({ item_id: id }) }),
       pause,
     ]);
   } catch (err) {
@@ -251,12 +273,27 @@ $("homework").addEventListener("click", async (e) => {
     showNotice(`Impossible d’enregistrer ce devoir (${err.message}).`);
     return;
   }
-
+  toast(item.done ? "Marqué comme fait" : "Remis à faire");
   try { items = await fetchItems(); } catch { /* garde l'état local */ }
   render();
 });
 
-// ── Auth: QR upload ───────────────────────────────────────────────────
+// ── Filtres de la sidebar ─────────────────────────────────────────────
+document.querySelectorAll("[data-filter]").forEach((link) => {
+  link.addEventListener("click", (e) => {
+    filter = link.dataset.filter;
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n === link));
+    if (filter === "all") {
+      show("homework");
+      render();
+    } else {
+      render();
+      show("homework");
+    }
+  });
+});
+
+// ── Auth : QR ─────────────────────────────────────────────────────────
 $("qrFile").addEventListener("change", (e) => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -285,7 +322,7 @@ $("qrFile").addEventListener("change", (e) => {
   reader.readAsDataURL(file);
 });
 
-// ── Auth: PIN ─────────────────────────────────────────────────────────
+// ── Auth : PIN ────────────────────────────────────────────────────────
 $("pinInput").addEventListener("input", (e) => {
   e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4);
 });
@@ -308,6 +345,9 @@ $("pinForm").addEventListener("submit", async (e) => {
     token = data.token;
     sessionStorage.setItem("pronote_token", token);
     hide("authPin");
+    if (Array.isArray(data.subjects) && data.subjects.length) {
+      $("profileName").textContent = data.subjects.length + " matières";
+    }
     await loadItems();
   } catch (err) {
     status.textContent = `Code refusé (${err.message}).`;
@@ -334,8 +374,7 @@ $("chatForm").addEventListener("submit", async (e) => {
   input.value = "";
 
   addMessage("user", question);
-  const pending = addMessage("answer");
-  pending.innerHTML = '<span class="dots" role="status" aria-label="Réponse en cours"><i></i><i></i><i></i></span>';
+  const pending = addMessage("answer", "…");
 
   try {
     const data = await api("/api/chat", {
@@ -352,21 +391,26 @@ $("chatForm").addEventListener("submit", async (e) => {
   pending.scrollIntoView({ block: "end", behavior: REDUCED ? "auto" : "smooth" });
 });
 
-// ── Refresh button ────────────────────────────────────────────────────
-refreshBtn.addEventListener("click", async () => {
-  if (!token || refreshBtn.disabled) return;
-  refreshBtn.disabled = true;
-  refreshBtn.classList.add("is-busy");
+// ── Actualisation ─────────────────────────────────────────────────────
+async function doRefresh(btn) {
+  if (!token || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("is-busy");
   try {
     await api("/api/items/refresh", { method: "POST" });
     await loadItems({ silent: true });
+    toast("Devoirs à jour");
   } catch (err) {
     if (token) showNotice(`Actualisation impossible (${err.message}).`);
   } finally {
-    refreshBtn.disabled = false;
-    refreshBtn.classList.remove("is-busy");
+    btn.disabled = false;
+    btn.classList.remove("is-busy");
   }
-});
+}
+
+refreshBtn.addEventListener("click", () => doRefresh(refreshBtn));
+topRefresh.addEventListener("click", () => doRefresh(topRefresh));
+$("logoutBtn").addEventListener("click", () => logout());
 
 // ── Init ──────────────────────────────────────────────────────────────
 async function init() {
@@ -379,7 +423,7 @@ async function init() {
 
 init();
 
-// Register service worker
+// Service worker
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
