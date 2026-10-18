@@ -296,6 +296,18 @@ document.querySelectorAll("[data-filter]").forEach((link) => {
 // ── Auth : QR ─────────────────────────────────────────────────────────
 $("qrBtn").addEventListener("click", () => $("qrFile").click());
 
+// Message adapté : sur ordinateur, coller est plus simple que choisir un fichier.
+(function adaptQrHint() {
+  const hint = $("qrHint");
+  if (!hint) return;
+  const ua = navigator.userAgent;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+  if (!mobile) {
+    hint.innerHTML = '<strong>Sur ordinateur :</strong> fais la capture du QR puis ' +
+      '<strong>colle-la ici</strong> (Ctrl+V) — ou choisis-la ci-dessous.';
+  }
+})();
+
 /** Envoie une capture (fichier, collage ou glisser-déposer) au serveur. */
 async function sendQrFile(file) {
   const status = $("qrStatus");
