@@ -489,7 +489,16 @@ async function init() {
   document.body.classList.toggle("is-guest", !token);
   if (token) {
     await loadItems();
-  } else {
+    return;
+  }
+  // Pas de jeton en sessionStorage : le cookie httpOnly peut quand même
+  // authentifier (autre onglet, navigateur relancé, après 90 jours de session).
+  try {
+    items = await fetchItems();
+    render();
+    show("homework", "chat");
+    document.body.classList.remove("is-guest");
+  } catch {
     show("authQr");
   }
 }

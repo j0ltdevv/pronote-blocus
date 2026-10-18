@@ -400,6 +400,31 @@ def test_la_session_survit_a_un_redemarrage(client, conn, pronote_hors_ligne):
     assert client.get("/api/items", headers=_entete(jeton)).status_code == 200
 
 
+def test_un_jeton_revoque_ne_ressuscite_pas_par_le_cookie(client, conn, pronote_hors_ligne):
+    """L'en-tête fait foi : un jeton mort ne redevient pas valide via le cookie."""
+    qr = client.post("/api/auth/qr", json={"pronote_url": PRONOTE_URL}).json()
+    corps = client.post(
+        "/api/auth/pin", json={"session_id": qr["session_id"], "pin": "1234"}
+    ).json()
+    jeton = corps["token"]
+
+    # Le cookie est toujours là, l'en-tête porte un jeton inconnu.
+    assert client.cookies.get(deps.COOKIE_NAME) is not None
+    assert client.get("/api/items", headers=_entete("jeton-mort")).status_code == 401
+
+    # Et le jeton révoqué, présenté en en-tête, est refusé même avec le cookie.
+    client.post("/api/auth/logout", headers=_entete(jeton))
+    assert client.get("/api/items", headers=_entete(jeton)).status_code == 401
+
+
+def test_le_cookie_seul_authentifie(client, conn, pronote_hors_ligne):
+    """Sans en-tête, le cookie httpOnly suffit — c'est le cas « navigateur relancé »."""
+    qr = client.post("/api/auth/qr", json={"pronote_url": PRONOTE_URL}).json()
+    client.post("/api/auth/pin", json={"session_id": qr["session_id"], "pin": "1234"})
+    assert client.cookies.get(deps.COOKIE_NAME) is not None
+    assert client.get("/api/items").status_code == 200
+
+
 # ── CORS ───────────────────────────────────────────────────────────────
 
 

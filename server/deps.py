@@ -147,6 +147,9 @@ def current_identity(
     # Deux porteurs possibles : l'en-tête (clients) et le cookie httpOnly
     # (navigateur), qui survit à la fermeture de l'onglet et au redémarrage
     # du serveur.
+    # L'en-tête, s'il est présent, fait foi : un jeton révoqué ne doit pas
+    # ressusciter grâce au cookie du navigateur. Le cookie n'est qu'un repli
+    # quand aucune credential n'est fournie.
     token = creds.credentials if creds is not None else request.cookies.get(COOKIE_NAME)
     if not token:
         raise _unauthorized("Jeton d'accès requis (Authorization: Bearer).")
