@@ -381,6 +381,20 @@ authPanel.addEventListener("drop", (e) => {
 // ── Auth : PIN ────────────────────────────────────────────────────────
 /* ── connexion sans ordinateur : identifiant + mot de passe ──────────── */
 
+// ── tabs auth ───────────────────────────────────────────────────────
+let defaultUrl = "", defaultEnt = "";
+for (const btn of document.querySelectorAll(".auth-tab")) {
+  btn.addEventListener("click", () => {
+    for (const b of document.querySelectorAll(".auth-tab")) {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    }
+    const tab = btn.dataset.tab;
+    $("pwdTab").classList.toggle("hidden", tab !== "pwd");
+    $("qrTab").classList.toggle("hidden", tab !== "qr");
+  });
+}
+
 /** Remplit le sélecteur d'ENT avec ce que pronotepy sait gérer. */
 async function loadEnts() {
   try {
@@ -392,10 +406,10 @@ async function loadEnts() {
       option.textContent = nom.replace(/_/g, " ");
       select.append(option);
     }
-    // L'établissement a un ENT : on le présélectionne, l'élève ne choisit
-    // que s'il sait ce qu'il fait. Même logique pour l'adresse PRONOTE.
-    if (data.default_ent) select.value = data.default_ent;
-    if (data.default_url) $("pwdUrl").value = data.default_url;
+    defaultUrl = data.default_url || "";
+    defaultEnt = data.default_ent || "";
+    if (defaultEnt) select.value = defaultEnt;
+    if (defaultUrl) $("pwdUrl").value = defaultUrl;
   } catch {
     /* liste indisponible : on laisse « Aucun », le champ reste utilisable */
   }
@@ -404,12 +418,12 @@ async function loadEnts() {
 $("pwdForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const status = $("pwdStatus");
-  const url = $("pwdUrl").value.trim();
+  const url = ($("pwdUrl").value.trim() || defaultUrl || "").trim() || null;
   const username = $("pwdUser").value.trim();
   const password = $("pwdPass").value;
-  const ent = $("pwdEnt").value || null;
-  if (!url || !username || !password) {
-    status.textContent = "Remplis les quatre champs.";
+  const ent = $("pwdEnt").value || defaultEnt || null;
+  if (!username || !password) {
+    status.textContent = "Identifiant et mot de passe requis.";
     return;
   }
   status.textContent = "";
