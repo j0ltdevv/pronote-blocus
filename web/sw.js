@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v2 */
+/* v3 : restauration de la feuille de style d’origine */
 
-const CACHE_NAME = 'pronote-blocus-v2';
-const API_CACHE = 'pronote-blocus-api-v2';
+const CACHE_NAME = 'pronote-blocus-v3';
+const API_CACHE = 'pronote-blocus-api-v3';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [

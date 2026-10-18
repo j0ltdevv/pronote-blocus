@@ -1,4 +1,4 @@
-/* Pronote Blocus — palette sobre et intuitive */
+/* Pronote Blocus — le cahier : papier, encre bleue, marge rouge */
 
 @font-face {
   font-family: "Bricolage Grotesque";
@@ -10,28 +10,28 @@
 :root {
   color-scheme: light dark;
 
-  --paper: #ffffff;
-  --paper-2: #f1f5f9;
-  --rule: #e2e8f0;
-  --ink: #0f172a;
-  --ink-soft: #64748b;
-  --margin: #2563eb;
-  --on-ink: #ffffff;
+  --paper: #f7f8fc;
+  --paper-2: #eceef8;
+  --rule: #d3d7ec;
+  --ink: #1a2380;
+  --ink-soft: #586099;
+  --margin: #cf2a3f;
+  --on-ink: #f7f8fc;
 
-  --margin-w: 6rem;
+  --margin-w: 6rem;      /* largeur de la marge, où s'écrivent les dates */
   --gutter: 1rem;
   --font: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0f172a;
-    --paper-2: #1e293b;
-    --rule: #334155;
-    --ink: #f1f5f9;
-    --ink-soft: #94a3b8;
-    --margin: #3b82f6;
-    --on-ink: #0f172a;
+    --paper: #12152b;
+    --paper-2: #1b1f3d;
+    --rule: #2c3262;
+    --ink: #dfe2ff;
+    --ink-soft: #9aa1d6;
+    --margin: #ff6479;
+    --on-ink: #12152b;
   }
 }
 
