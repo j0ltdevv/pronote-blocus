@@ -85,6 +85,34 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             '"from cryptography.fernet import Fernet; '
             'print(Fernet.generate_key().decode())"'
         )
+    data_dir = Path(get("DATA_DIR", "data")).expanduser()
+    # Mode web (require_token=False) : on tolère l'absence d'APP_SECRET et
+    # on le génère à la volée pour que `uvicorn server.main:app` marche
+    # sans rien configurer. La clé est persistée dans DATA_DIR/app_secret
+    # pour survivre aux redémarrages (comme scripts/serve.sh).
+    if not secret and not require_token:
+        key_file = data_dir / "app_secret"
+        if key_file.is_file():
+            try:
+                secret = key_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                secret = ""
+        if not secret:
+            try:
+                from cryptography.fernet import Fernet
+
+                secret = Fernet.generate_key().decode()
+                try:
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    key_file.write_text(secret + "\n", encoding="utf-8")
+                    try:
+                        key_file.chmod(0o600)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                secret = ""
     if require_token and secret:
         try:
             from cryptography.fernet import Fernet
@@ -92,7 +120,6 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             Fernet(secret.encode() if isinstance(secret, str) else secret)
         except Exception as exc:
             raise RuntimeError(f"APP_SECRET invalide (clé Fernet attendue) : {exc}") from exc
-    data_dir = Path(get("DATA_DIR", "data")).expanduser()
     window_start = get("WINDOW_START", "2026-10-01")
     # Valide tôt : une date mal formée doit casser au démarrage, pas à la
     # première synchro d'un élève.
