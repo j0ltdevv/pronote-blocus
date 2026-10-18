@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pronote Blocus — Mes documents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">PB</span><span>Pronote<br><b>Blocus</b></span></div>
+      <div class="profile"><div class="avatar">EA</div><div><strong>Emma A.</strong><small>3e B · Lycée Jean Moulin</small></div><button class="dots" aria-label="Ouvrir le menu">•••</button></div>
+      <nav aria-label="Navigation principale">
+        <p class="nav-label">Mon espace</p>
+        <a class="nav-item" href="#dashboard"><span class="nav-icon">⌂</span> Tableau de bord</a>
+        <a class="nav-item active" href="#documents"><span class="nav-icon">▤</span> Documents <em>24</em></a>
+        <a class="nav-item" href="#devoirs"><span class="nav-icon">✓</span> Mes devoirs <em>8</em></a>
+        <a class="nav-item" href="#cours"><span class="nav-icon">◷</span> Cours à rattraper</a>
+        <p class="nav-label second">Préférences</p>
+        <a class="nav-item" href="#matieres"><span class="nav-icon">☆</span> Mes priorités</a>
+        <a class="nav-item" href="#settings"><span class="nav-icon">⚙</span> Réglages</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="sync-dot"></div><span>Synchronisé il y a 8 min</span><button id="refreshBtn" class="refresh" aria-label="Synchroniser">↻</button></div>
+    </aside>
+    <main class="content" id="documents">
+      <header class="topbar"><button class="mobile-menu" aria-label="Menu">☰</button><div class="breadcrumb"><span>Mon espace</span><b>/</b><strong>Documents</strong></div><div class="top-actions"><button class="icon-button" aria-label="Notifications">♧<i></i></button><button class="help">?</button></div></header>
+      <section class="docs-hero"><div><p class="eyebrow">Ton espace ressources</p><h1>Tous tes documents,<br><span>au même endroit.</span></h1><p class="subline">Retrouve les cours, fiches et exercices envoyés par tes professeurs sans te perdre.</p></div><div class="hero-orbit" aria-hidden="true"><div class="orbit-card card-back">PDF</div><div class="orbit-card card-mid">DOC</div><div class="orbit-card card-front"><span>▤</span><small>24 fichiers</small></div><div class="orbit-dot"></div></div></section>
+      <section class="quick-row" aria-label="Raccourcis documents"><button class="quick-card selected" data-category="all"><span class="quick-icon purple">▤</span><span><strong>Tout voir</strong><small>24 documents</small></span><b>→</b></button><button class="quick-card" data-category="cours"><span class="quick-icon blue">✦</span><span><strong>Mes cours</strong><small>12 documents</small></span><b>→</b></button><button class="quick-card" data-category="fiches"><span class="quick-icon orange">▧</span><span><strong>Fiches de révision</strong><small>7 documents</small></span><b>→</b></button><button class="quick-card" data-category="exercices"><span class="quick-icon green">✓</span><span><strong>Exercices</strong><small>5 documents</small></span><b>→</b></button></section>
+      <section class="section-head"><div><p class="eyebrow">Bibliothèque de classe</p><h2>Documents récents</h2></div><button class="text-button" id="favoritesBtn">Mes favoris <span>☆</span></button></section>
+      <div class="toolbar"><div class="segmented"><button class="segment active" data-filter="all">Tous <span>24</span></button><button class="segment" data-filter="recent">Récents <span>6</span></button><button class="segment" data-filter="favorite">Favoris <span>4</span></button></div><label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Rechercher un document..."></label></div>
+      <div class="document-grid" id="documentGrid">
+        <article class="document-card" data-category="cours" data-filter="recent" data-favorite="true"><div class="doc-top"><span class="file-icon pdf">PDF</span><button class="favorite active" aria-label="Retirer des favoris">★</button></div><h3>La reproduction humaine</h3><p>SVT <i>·</i> Mme Bernard</p><div class="doc-footer"><span>Il y a 2 h</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+        <article class="document-card" data-category="fiches" data-filter="recent" data-favorite="true"><div class="doc-top"><span class="file-icon pdf">PDF</span><button class="favorite active" aria-label="Retirer des favoris">★</button></div><h3>Fiche — Fonctions affines</h3><p>Mathématiques <i>·</i> M. Petit</p><div class="doc-footer"><span>Hier</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+        <article class="document-card" data-category="exercices" data-filter="recent"><div class="doc-top"><span class="file-icon doc">DOC</span><button class="favorite" aria-label="Ajouter aux favoris">☆</button></div><h3>Exercices chapitre 4</h3><p>Mathématiques <i>·</i> M. Petit</p><div class="doc-footer"><span>Hier</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+        <article class="document-card" data-category="cours" data-filter="recent"><div class="doc-top"><span class="file-icon ppt">PPT</span><button class="favorite" aria-label="Ajouter aux favoris">☆</button></div><h3>La Révolution française</h3><p>Histoire-Géo <i>·</i> Mme Roux</p><div class="doc-footer"><span>Lun. 12 oct.</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+        <article class="document-card" data-category="fiches" data-filter="favorite"><div class="doc-top"><span class="file-icon pdf">PDF</span><button class="favorite active" aria-label="Retirer des favoris">★</button></div><h3>Vocabulaire — Daily routine</h3><p>Anglais <i>·</i> M. Wilson</p><div class="doc-footer"><span>Ven. 9 oct.</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+        <article class="document-card" data-category="cours" data-filter="favorite"><div class="doc-top"><span class="file-icon pdf">PDF</span><button class="favorite active" aria-label="Retirer des favoris">★</button></div><h3>Les mélanges et solutions</h3><p>Physique-Chimie <i>·</i> Mme Leroy</p><div class="doc-footer"><span>Jeu. 8 oct.</span><button class="open-doc">Ouvrir <span>→</span></button></div></article>
+      </div>
+      <div class="empty" id="emptyState" hidden>Aucun document ne correspond à ta recherche.</div>
+      <footer><span>Pronote Blocus <b>·</b> un pas après l'autre.</span><span>Connecté à PRONOTE <i class="footer-dot"></i></span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status">Document ajouté à tes favoris</div>
+  <script src="./app.js"></script>
+</body>
+</html>
