@@ -147,3 +147,22 @@ body.is-guest .docs-hero { padding-bottom: 8px; }
 .check-list li, .cross-list li { padding-left: 20px; position: relative; margin: 6px 0; }
 .check-list li::before { content: "✓"; position: absolute; left: 0; color: var(--green, #245c52); font-weight: 700; }
 .cross-list li::before { content: "✕"; position: absolute; left: 0; color: #ad6847; font-weight: 700; }
+
+/* ── Mobile d'abord : cibles tactiles et lisibilité ──────────────────── */
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  .mobile-menu, .icon-button, .refresh, .dots {
+    min-width: 44px; min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .how > summary { min-height: 44px; }
+  .steps, .check-list, .cross-list, .subline { font-size: 15px; line-height: 1.55; }
+  .primary-action { width: 100%; min-height: 50px; justify-content: center; font-size: 1rem; }
+  .pin-form input { min-height: 50px; font-size: 16px; }
+  .pin-form { flex-direction: column; align-items: stretch; }
+  .pin-form .primary-action { width: 100%; }
+  #pinInput { max-width: none; }
+  .document-card .open-doc { min-height: 44px; padding: 10px 16px; }
+  .nav-item { min-height: 44px; display: flex; align-items: center; }
+}
