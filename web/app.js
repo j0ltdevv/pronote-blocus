@@ -180,6 +180,8 @@ function updateCounts({ late, soon, done, all }) {
   $("navSoon").textContent = soon;
   $("navDone").textContent = done;
   $("orbitCount").textContent = `${all} ${plural(all, "devoir", "devoirs")}`;
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  set("mAll", all); set("mLate", late); set("mSoon", soon); set("mDone", done);
 }
 
 function render() {
@@ -238,6 +240,7 @@ async function loadItems({ silent = false } = {}) {
     hide("loading");
     render();
     show("chat");
+    $("mobileFilters").classList.remove("hidden");
     $("syncLabel").textContent = "Synchronisé à l'instant";
   } catch (e) {
     hide("loading");
@@ -278,19 +281,15 @@ $("homework").addEventListener("click", async (e) => {
   render();
 });
 
-// ── Filtres de la sidebar ─────────────────────────────────────────────
+// ── Filtres (sidebar + mobile) ─────────────────────────────────────
+function setFilter(next) {
+  filter = next;
+  document.querySelectorAll(".nav-item[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
+  document.querySelectorAll(".mf[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
+  show("homework"); render();
+}
 document.querySelectorAll("[data-filter]").forEach((link) => {
-  link.addEventListener("click", (e) => {
-    filter = link.dataset.filter;
-    document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n === link));
-    if (filter === "all") {
-      show("homework");
-      render();
-    } else {
-      render();
-      show("homework");
-    }
-  });
+  link.addEventListener("click", (e) => { e.preventDefault(); setFilter(link.dataset.filter); });
 });
 
 // ── Auth : QR ─────────────────────────────────────────────────────────

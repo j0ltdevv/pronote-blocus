@@ -50,6 +50,14 @@
         <small id="orbitCount" class="hidden" aria-hidden="true">—</small>
       </section>
 
+      <!-- filtres mobiles : toujours visibles (pas dans le tiroir) -->
+      <div id="mobileFilters" class="mobile-filters hidden" role="tablist" aria-label="Filtrer">
+        <button class="mf active" data-filter="all">Tout <em id="mAll">0</em></button>
+        <button class="mf" data-filter="late">En retard <em id="mLate">0</em></button>
+        <button class="mf" data-filter="soon">À venir <em id="mSoon">0</em></button>
+        <button class="mf" data-filter="done">Faits <em id="mDone">0</em></button>
+      </div>
+
       <div id="notice" class="notice hidden" role="alert"></div>
 
       <!-- Connexion -->
