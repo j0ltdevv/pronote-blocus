@@ -207,11 +207,12 @@ def post_qr(body: QrIn) -> QrOut:
 @router.post("/pin", response_model=PinOut)
 def post_pin(
     body: PinIn,
+    request: Request,
     response: Response,
     conn: DBDep,
     cfg: CfgDep,
 ) -> PinOut:
-    """Finalise la connexion avec le code à 4 chiffres, rend un jeton de 24 h."""
+    """Finalise la connexion avec le code à 4 chiffres, rend un jeton de 90 jours."""
     sess = sessions().pop(body.session_id, None)
     if sess is None:
         raise HTTPException(404, "Session introuvable ou expirée.")
@@ -263,7 +264,10 @@ def post_pin(
         max_age=TOKEN_TTL_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=response.headers.get("x-forwarded-proto") == "https" or False,
+        secure=(
+            request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+        ),
         path="/",
     )
     return PinOut(user_id=user_id, token=token, subjects=subjects)
