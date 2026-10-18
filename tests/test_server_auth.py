@@ -425,6 +425,101 @@ def test_le_cookie_seul_authentifie(client, conn, pronote_hors_ligne):
     assert client.get("/api/items").status_code == 200
 
 
+@pytest.fixture
+def pronote_mot_de_passe(monkeypatch):
+    """Double `login_with_password` : aucune requête réseau dans les tests."""
+    appels: dict[str, object] = {}
+
+    def fake_login(url, username, password, app_uuid, ent=None):  # noqa: ANN001
+        appels["ent"] = ent
+        appels["username"] = username
+        return (
+            SimpleNamespace(logged_in=True),
+            {
+                "password": password,
+                "client_identifier": "ident-1",
+                "uuid": app_uuid,
+                "username": username,
+            },
+        )
+
+    monkeypatch.setattr(pronote_auth, "login_with_password", fake_login)
+    monkeypatch.setattr(fetch, "class_name_of", lambda client_pronote: "Terminale")
+    monkeypatch.setattr(
+        fetch, "collect", lambda c, conn, uid, cfg, phase="items": SimpleNamespace(ok=True)
+    )
+    return appels
+
+
+def test_le_mot_de_passe_ouvre_une_session(client, conn, pronote_mot_de_passe):
+    """Sans ordinateur : identifiant + mot de passe → jeton et cookie."""
+    reponse = client.post(
+        "/api/auth/password",
+        json={
+            "pronote_url": PRONOTE_URL,
+            "username": "eleve",
+            "password": "secret",
+        },
+    )
+    assert reponse.status_code == 200, reponse.text
+    corps = reponse.json()
+    assert corps["token"]
+    assert pronote_mot_de_passe["username"] == "eleve"
+    assert client.cookies.get(deps.COOKIE_NAME) is not None
+    assert client.get("/api/items").status_code == 200
+
+    # Le mot de passe n'est pas stocké en clair : seule la valeur exportée
+    # par PRONOTE est chiffrée en base.
+    brut = conn.execute("select token_enc from users").fetchone()[0]
+    assert b"secret" not in bytes(brut)
+
+
+def test_le_mot_de_passe_peut_passer_par_un_ent(client, pronote_mot_de_passe):
+    """Quand le lycée est derrière un ENT, le handler correspondant est résolu."""
+    reponse = client.post(
+        "/api/auth/password",
+        json={
+            "pronote_url": PRONOTE_URL,
+            "username": "eleve",
+            "password": "secret",
+            "ent": "lyceeconnecte_aquitaine",
+        },
+    )
+    assert reponse.status_code == 200, reponse.text
+    assert callable(pronote_mot_de_passe["ent"])
+
+
+def test_un_ent_inconnu_est_refuse(client, pronote_mot_de_passe):
+    reponse = client.post(
+        "/api/auth/password",
+        json={
+            "pronote_url": PRONOTE_URL,
+            "username": "eleve",
+            "password": "secret",
+            "ent": "pas-un-ent",
+        },
+    )
+    assert reponse.status_code == 400
+
+
+def test_le_mot_de_passe_peut_etre_desactive(client, conn, monkeypatch, pronote_mot_de_passe):
+    """`ALLOW_PASSWORD_LOGIN=0` ferme la route, sans toucher au reste."""
+    from app.config import from_env
+
+    cfg = from_env(require_token=False)
+    object.__setattr__(cfg, "allow_password_login", False)
+    # `_bootstrap` reconstruit la config dès que `_conn` est absent : on fige
+    # les deux pour que la requête voie bien le drapeau désactivé.
+    monkeypatch.setattr(deps, "_conn", conn)
+    monkeypatch.setattr(deps, "_cfg", cfg)
+
+    reponse = client.post(
+        "/api/auth/password",
+        json={"pronote_url": PRONOTE_URL, "username": "e", "password": "p"},
+    )
+    assert reponse.status_code == 403
+
+
 # ── CORS ───────────────────────────────────────────────────────────────
 
 

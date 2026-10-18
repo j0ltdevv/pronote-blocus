@@ -64,8 +64,8 @@
         <p class="eyebrow">Étape 1 sur 2</p>
         <h2>Connecte ton compte PRONOTE</h2>
         <p class="subline">
-          Blocus lit tes devoirs, rien de plus. <strong>Aucun mot de passe demandé</strong>,
-          et rien n'est coché ni marqué comme lu chez toi.
+          Blocus lit tes devoirs, rien de plus. Par défaut <strong>aucun mot de passe
+          n'est demandé</strong>, et rien n'est coché ni marqué comme lu chez toi.
         </p>
 
         <details class="how" open>
@@ -103,7 +103,7 @@
             <div>
               <p class="col-title no">Il ne fait jamais</p>
               <ul class="cross-list">
-                <li>Te demander ton mot de passe PRONOTE.</li>
+                <li>Conserver ton mot de passe : il est échangé une fois contre un jeton d'appareil, puis oublié.</li>
                 <li>Cocher un devoir, marquer un message comme lu ou envoyer quoi que ce soit dans PRONOTE.</li>
                 <li>Publier, partager ou revendre tes données.</li>
                 <li>Garder ton code à 4 chiffres : il sert une fois, puis il est oublié.</li>
@@ -136,6 +136,35 @@
         <button id="qrBtn" class="open-doc primary-action" type="button">Choisir une capture →</button>
         <input id="qrFile" type="file" accept="image/*" class="hidden">
         <p class="status" id="qrStatus"></p>
+
+        <details class="how" id="noPcBlock">
+          <summary>Pas d'ordinateur sous la main ? Se connecter avec ses identifiants</summary>
+          <p class="hint">
+            PRONOTE n'affiche le QR que sur la version ordinateur. Sans ordinateur,
+            tu peux te connecter directement avec l'identifiant et le mot de passe
+            que ton établissement t'a donnés.
+          </p>
+          <form id="pwdForm" class="pwd-form">
+            <label>Adresse PRONOTE
+              <input id="pwdUrl" type="url" required placeholder="https://0XXXXXXX.index-education.net/pronote/eleve.html">
+            </label>
+            <label>Ton ENT (si ton lycée en a un)
+              <select id="pwdEnt"><option value="">Aucun — PRONOTE directement</option></select>
+            </label>
+            <label>Identifiant
+              <input id="pwdUser" type="text" required autocomplete="username">
+            </label>
+            <label>Mot de passe
+              <input id="pwdPass" type="password" required autocomplete="current-password">
+            </label>
+            <button id="pwdBtn" type="submit" class="open-doc primary-action">Se connecter →</button>
+            <p class="status" id="pwdStatus"></p>
+          </form>
+          <p class="hint">
+            Le mot de passe sert une seule fois : PRONOTE le remplace par un jeton
+            d'appareil, chiffré en base. Il n'est jamais écrit dans un journal.
+          </p>
+        </details>
       </section>
 
       <!-- Connexion : PIN -->
