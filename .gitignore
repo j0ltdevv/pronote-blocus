@@ -8,3 +8,5 @@ dist/
 *.db-wal
 *.db-shm
 .env
+data/
+app_secret

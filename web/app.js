@@ -180,6 +180,8 @@ function updateCounts({ late, soon, done, all }) {
   $("navSoon").textContent = soon;
   $("navDone").textContent = done;
   $("orbitCount").textContent = `${all} ${plural(all, "devoir", "devoirs")}`;
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  set("mAll", all); set("mLate", late); set("mSoon", soon); set("mDone", done);
 }
 
 function render() {
@@ -238,6 +240,7 @@ async function loadItems({ silent = false } = {}) {
     hide("loading");
     render();
     show("chat");
+    $("mobileFilters").classList.remove("hidden");
     $("syncLabel").textContent = "Synchronisé à l'instant";
   } catch (e) {
     hide("loading");
@@ -278,19 +281,15 @@ $("homework").addEventListener("click", async (e) => {
   render();
 });
 
-// ── Filtres de la sidebar ─────────────────────────────────────────────
+// ── Filtres (sidebar + mobile) ─────────────────────────────────────
+function setFilter(next) {
+  filter = next;
+  document.querySelectorAll(".nav-item[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
+  document.querySelectorAll(".mf[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
+  show("homework"); render();
+}
 document.querySelectorAll("[data-filter]").forEach((link) => {
-  link.addEventListener("click", (e) => {
-    filter = link.dataset.filter;
-    document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n === link));
-    if (filter === "all") {
-      show("homework");
-      render();
-    } else {
-      render();
-      show("homework");
-    }
-  });
+  link.addEventListener("click", (e) => { e.preventDefault(); setFilter(link.dataset.filter); });
 });
 
 // ── Auth : QR ─────────────────────────────────────────────────────────
@@ -313,6 +312,7 @@ async function sendQrFile(file) {
   const status = $("qrStatus");
   status.classList.remove("is-error");
   status.textContent = "Lecture du QR code…";
+  $("qrZone")?.classList.add("has-preview");
 
   const preview = $("qrPreview");
   if (preview) {
@@ -381,6 +381,20 @@ authPanel.addEventListener("drop", (e) => {
 // ── Auth : PIN ────────────────────────────────────────────────────────
 /* ── connexion sans ordinateur : identifiant + mot de passe ──────────── */
 
+// ── tabs auth ───────────────────────────────────────────────────────
+let defaultUrl = "", defaultEnt = "";
+for (const btn of document.querySelectorAll(".auth-tab")) {
+  btn.addEventListener("click", () => {
+    for (const b of document.querySelectorAll(".auth-tab")) {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    }
+    const tab = btn.dataset.tab;
+    $("pwdTab").classList.toggle("hidden", tab !== "pwd");
+    $("qrTab").classList.toggle("hidden", tab !== "qr");
+  });
+}
+
 /** Remplit le sélecteur d'ENT avec ce que pronotepy sait gérer. */
 async function loadEnts() {
   try {
@@ -392,10 +406,10 @@ async function loadEnts() {
       option.textContent = nom.replace(/_/g, " ");
       select.append(option);
     }
-    // L'établissement a un ENT : on le présélectionne, l'élève ne choisit
-    // que s'il sait ce qu'il fait. Même logique pour l'adresse PRONOTE.
-    if (data.default_ent) select.value = data.default_ent;
-    if (data.default_url) $("pwdUrl").value = data.default_url;
+    defaultUrl = data.default_url || "";
+    defaultEnt = data.default_ent || "";
+    if (defaultEnt) select.value = defaultEnt;
+    if (defaultUrl) $("pwdUrl").value = defaultUrl;
   } catch {
     /* liste indisponible : on laisse « Aucun », le champ reste utilisable */
   }
@@ -404,12 +418,12 @@ async function loadEnts() {
 $("pwdForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const status = $("pwdStatus");
-  const url = $("pwdUrl").value.trim();
+  const url = ($("pwdUrl").value.trim() || defaultUrl || "").trim() || null;
   const username = $("pwdUser").value.trim();
   const password = $("pwdPass").value;
-  const ent = $("pwdEnt").value || null;
-  if (!url || !username || !password) {
-    status.textContent = "Remplis les quatre champs.";
+  const ent = $("pwdEnt").value || defaultEnt || null;
+  if (!username || !password) {
+    status.textContent = "Identifiant et mot de passe requis.";
     return;
   }
   status.textContent = "";
