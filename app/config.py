@@ -35,6 +35,7 @@ class Config:
     llm_messages: bool
     max_concurrent_syncs: int
     allow_password_login: bool
+    password_ent: str
     db_path: Path
     data_dir: Path
 
@@ -116,6 +117,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
         llm_messages=get("LLM_MESSAGES", "1").lower() not in ("0", "false", "no", ""),
         max_concurrent_syncs=concurrency,
         allow_password_login=get("ALLOW_PASSWORD_LOGIN", "1") not in ("0", "false", "no"),
+        password_ent=get("PASSWORD_ENT", "lyceeconnecte_aquitaine"),
         db_path=data_dir / "app.db",
         data_dir=data_dir,
     )

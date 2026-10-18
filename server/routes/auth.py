@@ -61,7 +61,7 @@ class PasswordIn(BaseModel):
     `laclasse_educonnect`…), laissé vide quand PRONOTE authentifie lui-même.
     """
 
-    pronote_url: str
+    pronote_url: str | None = None
     username: str
     password: str
     ent: str | None = None
@@ -229,9 +229,9 @@ def _ent_function(name: str | None):
     return fonction
 
 
-@router.get("/ents")
-def get_ents() -> dict[str, list[str]]:
-    """Liste des ENT gérés par pronotepy (pour le sélecteur du formulaire)."""
+@router.get("/options")
+def get_options(cfg: CfgDep) -> dict[str, Any]:
+    """Ce que le formulaire doit présélectionner : ENT et URL de l'établissement."""
     import pronotepy.ent as ent_module
 
     # Les handlers sont soit des fonctions, soit des `functools.partial`
@@ -241,7 +241,11 @@ def get_ents() -> dict[str, list[str]]:
         for n in dir(ent_module)
         if not n.startswith("_") and callable(getattr(ent_module, n, None))
     )
-    return {"ents": noms}
+    return {
+        "ents": noms,
+        "default_url": cfg.default_pronote_url,
+        "default_ent": cfg.password_ent,
+    }
 
 
 @router.post("/password", response_model=PinOut)
@@ -254,8 +258,9 @@ def post_password(
 ) -> PinOut:
     """Connexion par identifiant + mot de passe, pour qui n'a pas d'ordinateur.
 
-    Le mot de passe ne sert qu'à cette requête : il est échangé contre les
-    credentials exportés par PRONOTE, puis chiffré en base (Fernet).
+    PRONOTE ne délivre aucun jeton dans ce mode : les credentials exportés
+    contiennent le mot de passe, qui est donc **conservé chiffré** en base
+    (Fernet). Il n'apparaît jamais en clair, ni en base ni dans un journal.
     """
     if not cfg.allow_password_login:
         raise HTTPException(403, "La connexion par mot de passe est désactivée.")
@@ -266,26 +271,30 @@ def post_password(
 
     import pronotepy
 
-    ent = _ent_function(body.ent)
+    ent = _ent_function(body.ent or cfg.password_ent)
+    pronote_url = body.pronote_url or cfg.default_pronote_url
     app_uuid = crypto.new_app_uuid()
     try:
         client, creds = auth.login_with_password(
-            body.pronote_url, username, body.password, app_uuid, ent=ent
+            pronote_url, username, body.password, app_uuid, ent=ent
         )
     except pronotepy.MFAError as exc:
         raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
     except Exception as exc:
-        raise HTTPException(
-            401,
-            "Connexion refusée. Si ton lycée passe par un ENT (EduConnect, "
-            "Lycée Connecté…), choisis-le dans la liste : le mot de passe seul "
-            "ne suffit pas.",
-        ) from exc
+        # Message utile selon le cas : sans ENT, l'élève doit en choisir un ;
+        # avec, ce sont les identifiants qui sont en cause.
+        detail = (
+            f"Identifiants refusés par « {body.ent or cfg.password_ent} ». "
+            "Vérifie ton identifiant et ton mot de passe."
+            if ent is not None
+            else "Connexion refusée. Choisis ton ENT dans la liste : sans lui, "
+            "PRONOTE refuse le mot de passe."
+        )
+        raise HTTPException(401, detail) from exc
 
     if getattr(client, "logged_in", True) is False:
         raise HTTPException(401, "Identifiants refusés par PRONOTE.")
 
-    pronote_url = body.pronote_url
     class_name = fetch.class_name_of(client)
     user_id = _find_or_create(
         conn, cfg, pronote_url, username, creds, class_name, None
