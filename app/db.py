@@ -167,6 +167,12 @@ CREATE TABLE IF NOT EXISTS lesson_seen (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, slot)
 );
+CREATE TABLE IF NOT EXISTS web_sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS items_user_due ON items(user_id, due_date);
 """
 
@@ -655,3 +661,37 @@ def bump_llm_count(
             (day, count + 1, user_id),
         )
     return True
+
+
+# ─────────────────────── sessions web persistantes ───────────────────────
+#
+# Le jeton est stocké **haché** : une fuite de la base ne donne aucune session
+# utilisable. Il survit aux redémarrages du serveur, ce qui évite à l'élève de
+# refaire un QR à chaque déploiement.
+
+
+def create_web_session(conn: sqlite3.Connection, token_hash: str, user_id: str, expires_at: int) -> None:
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO web_sessions (token_hash, user_id, created_at, expires_at)"
+            " VALUES (?,?,?,?)",
+            (token_hash, user_id, now_iso(), expires_at),
+        )
+
+
+def get_web_session(conn: sqlite3.Connection, token_hash: str, now: int) -> str | None:
+    row = conn.execute(
+        "SELECT user_id FROM web_sessions WHERE token_hash = ? AND expires_at > ?",
+        (token_hash, now),
+    ).fetchone()
+    return row["user_id"] if row is not None else None
+
+
+def delete_web_session(conn: sqlite3.Connection, token_hash: str) -> None:
+    with conn:
+        conn.execute("DELETE FROM web_sessions WHERE token_hash = ?", (token_hash,))
+
+
+def purge_web_sessions(conn: sqlite3.Connection, now: int) -> None:
+    with conn:
+        conn.execute("DELETE FROM web_sessions WHERE expires_at <= ?", (now,))

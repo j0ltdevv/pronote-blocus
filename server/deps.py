@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Request, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import config, db
@@ -67,57 +67,50 @@ CfgDep = Annotated[config.Config, Depends(get_cfg)]
 # l'instance qui n'a qu'un processus) : redémarrer le serveur déconnecte
 # tout le monde, ce qui est acceptable puisque le compte reste en base.
 
-TOKEN_TTL_SECONDS = 24 * 60 * 60
+# 90 jours : l'élève ne refait un QR qu'à l'expiration, pas à chaque
+# redémarrage. Le jeton est haché en base, donc une fuite ne donne rien.
+TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
+COOKIE_NAME = "blocus_session"
 
 
-@dataclass(frozen=True)
-class _Jeton:
-    """Compte visé et date d'expiration (horloge monotone, immunisée à l'heure)."""
+def _hash(token: str) -> str:
+    import hashlib
 
-    user_id: str
-    expires_at: float
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
-_tokens: dict[str, _Jeton] = {}
-_tokens_lock = threading.RLock()
-
-
-def issue_token(user_id: str) -> str:
-    """Crée un jeton opaque pour `user_id` et le range en mémoire."""
+def issue_token(user_id: str, conn=None) -> str:
+    """Crée un jeton opaque pour `user_id`, persistant s'il y a une connexion."""
     token = secrets.token_urlsafe(32)
-    with _tokens_lock:
-        _purge_tokens()
-        _tokens[token] = _Jeton(
-            user_id=user_id,
-            expires_at=time.monotonic() + TOKEN_TTL_SECONDS,
-        )
+    if conn is not None:
+        now = int(time.time())
+        db.purge_web_sessions(conn, now)
+        db.create_web_session(conn, _hash(token), user_id, now + TOKEN_TTL_SECONDS)
+    _MEMORY[token] = (user_id, time.monotonic() + TOKEN_TTL_SECONDS)
     return token
 
 
-def resolve_token(token: str) -> str | None:
+def resolve_token(token: str, conn=None) -> str | None:
     """Renvoie l'identifiant du compte, ou None si le jeton est mort."""
-    now = time.monotonic()
-    with _tokens_lock:
-        entree = _tokens.get(token)
-        if entree is None:
-            return None
-        if entree.expires_at <= now:
-            del _tokens[token]
-            return None
-        return entree.user_id
+    if conn is not None:
+        user_id = db.get_web_session(conn, _hash(token), int(time.time()))
+        if user_id is not None:
+            return user_id
+    entree = _MEMORY.get(token)
+    if entree is None:
+        return None
+    user_id, expire = entree
+    if expire <= time.monotonic():
+        _MEMORY.pop(token, None)
+        return None
+    return user_id
 
 
-def revoke_token(token: str) -> None:
+def revoke_token(token: str, conn=None) -> None:
     """Oublie un jeton (déconnexion, ou compte supprimé)."""
-    with _tokens_lock:
-        _tokens.pop(token, None)
-
-
-def _purge_tokens() -> None:
-    """Supprime les jetons périmés — appelé sous verrou."""
-    now = time.monotonic()
-    for token in [t for t, jeton in _tokens.items() if jeton.expires_at <= now]:
-        del _tokens[token]
+    _MEMORY.pop(token, None)
+    if conn is not None:
+        db.delete_web_session(conn, _hash(token))
 
 
 # ── identité de l'appelant ─────────────────────────────────────────────
@@ -131,6 +124,8 @@ class Identity:
     token: str
 
 
+_MEMORY: dict[str, tuple[str, float]] = {}
+
 _bearer = HTTPBearer(auto_error=False, description="Jeton rendu par /api/auth/pin.")
 
 
@@ -139,6 +134,7 @@ def _unauthorized(detail: str) -> HTTPException:
 
 
 def current_identity(
+    request: Request,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     conn: DBDep,
 ) -> Identity:
@@ -148,15 +144,19 @@ def current_identity(
     compte a disparu depuis l'émission du jeton. L'identité ne vient jamais
     du client : elle n'existe que par le jeton.
     """
-    if creds is None:
+    # Deux porteurs possibles : l'en-tête (clients) et le cookie httpOnly
+    # (navigateur), qui survit à la fermeture de l'onglet et au redémarrage
+    # du serveur.
+    token = creds.credentials if creds is not None else request.cookies.get(COOKIE_NAME)
+    if not token:
         raise _unauthorized("Jeton d'accès requis (Authorization: Bearer).")
-    user_id = resolve_token(creds.credentials)
+    user_id = resolve_token(token, conn)
     if user_id is None:
         raise _unauthorized("Jeton invalide ou expiré.")
     if db.get_user(conn, user_id) is None:
-        revoke_token(creds.credentials)
+        revoke_token(token, conn)
         raise _unauthorized("Compte supprimé.")
-    return Identity(user_id=user_id, token=creds.credentials)
+    return Identity(user_id=user_id, token=token)
 
 
 UserDep = Annotated[Identity, Depends(current_identity)]
