@@ -73,3 +73,27 @@
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
 button.is-busy { opacity: .5; }
+
+/* ── Mode invité : rien à naviguer tant qu'on n'est pas connecté ─────── */
+body.is-guest .sidebar nav,
+body.is-guest .sidebar-bottom { display: none; }
+body.is-guest .profile { opacity: .5; }
+body.is-guest .docs-hero { padding-bottom: 8px; }
+
+.panel-auth { max-width: 620px; }
+.steps { margin: 10px 0 18px; padding-left: 20px; color: var(--muted, #73736e); line-height: 1.7; }
+.steps li { margin: 2px 0; }
+
+.primary-action {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 22px; border: 0; border-radius: 10px;
+  background: var(--green, #245c52); color: #fff;
+  font-size: .95rem; font-weight: 600; cursor: pointer;
+}
+.primary-action:hover { filter: brightness(1.08); }
+.primary-action:focus-visible { outline: 2px solid var(--green, #245c52); outline-offset: 3px; }
+
+.done-mark { color: #b9b9b2; font-size: 1.1rem; line-height: 1; }
+.done-mark.active { color: var(--green, #245c52); }
+
+.document-card .open-doc { white-space: nowrap; }

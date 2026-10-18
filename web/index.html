@@ -59,25 +59,27 @@
       <div id="notice" class="notice hidden" role="alert"></div>
 
       <!-- Connexion : QR -->
-      <section id="authQr" class="panel hidden">
-        <p class="eyebrow">Connexion</p>
+      <section id="authQr" class="panel panel-auth hidden">
+        <p class="eyebrow">Étape 1 sur 2</p>
         <h2>Connecte ton compte PRONOTE</h2>
-        <p class="subline">Dans PRONOTE, affiche le QR code de connexion mobile, fais-en une capture d'écran, puis envoie-la ici.</p>
-        <label class="segmented" style="display:inline-flex;cursor:pointer">
-          <span class="segment active">Choisir la capture</span>
-          <input id="qrFile" type="file" accept="image/*" class="hidden">
-        </label>
+        <ol class="steps">
+          <li>Dans PRONOTE, ouvre la connexion par QR code.</li>
+          <li>Fais une capture d'écran du QR.</li>
+          <li>Envoie-la ici.</li>
+        </ol>
+        <button id="qrBtn" class="open-doc primary-action" type="button">Envoyer la capture →</button>
+        <input id="qrFile" type="file" accept="image/*" class="hidden">
         <p class="status" id="qrStatus"></p>
       </section>
 
       <!-- Connexion : PIN -->
-      <section id="authPin" class="panel hidden">
-        <p class="eyebrow">Connexion</p>
+      <section id="authPin" class="panel panel-auth hidden">
+        <p class="eyebrow">Étape 2 sur 2</p>
         <h2>Entre le code du QR</h2>
         <p class="subline">C'est le code à 4 chiffres que tu as choisi en générant le QR.</p>
         <form id="pinForm" class="pin-form">
           <input id="pinInput" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="••••" aria-label="Code à 4 chiffres">
-          <button id="pinBtn" type="submit" class="open-doc">Valider →</button>
+          <button id="pinBtn" type="submit" class="open-doc primary-action">Valider →</button>
         </form>
         <p class="status" id="pinStatus"></p>
       </section>
