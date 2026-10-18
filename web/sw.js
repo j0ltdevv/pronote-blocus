@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v9 : collage de la capture QR */
+/* v10 : consigne adaptée mobile / ordinateur */
 
-const CACHE_NAME = 'pronote-blocus-v9';
-const API_CACHE = 'pronote-blocus-api-v9';
+const CACHE_NAME = 'pronote-blocus-v10';
+const API_CACHE = 'pronote-blocus-api-v10';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
