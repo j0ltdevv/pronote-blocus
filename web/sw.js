@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v6 : tiroir de navigation mobile */
+/* v7 : mode d'emploi QR + garanties */
 
-const CACHE_NAME = 'pronote-blocus-v6';
-const API_CACHE = 'pronote-blocus-api-v6';
+const CACHE_NAME = 'pronote-blocus-v7';
+const API_CACHE = 'pronote-blocus-api-v7';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
