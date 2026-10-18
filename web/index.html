@@ -44,17 +44,10 @@
       </header>
 
       <section class="docs-hero">
-        <div>
-          <p class="eyebrow">Ce que tu as à rattraper</p>
-          <h1 id="summaryTitle">Bonjour.</h1>
-          <p class="subline" id="summaryMeta">Connecte ton compte pour voir tes devoirs.</p>
-        </div>
-        <div class="hero-orbit" aria-hidden="true">
-          <div class="orbit-card card-back">DM</div>
-          <div class="orbit-card card-mid">EX</div>
-          <div class="orbit-card card-front"><span>▤</span><small id="orbitCount">—</small></div>
-          <div class="orbit-dot"></div>
-        </div>
+        <p class="eyebrow">Ce que tu as à rattraper</p>
+        <h1 id="summaryTitle">Bonjour.</h1>
+        <p class="subline" id="summaryMeta">Connecte ton compte pour voir tes devoirs.</p>
+        <small id="orbitCount" class="hidden" aria-hidden="true">—</small>
       </section>
 
       <div id="notice" class="notice hidden" role="alert"></div>
@@ -63,68 +56,26 @@
       <section id="authQr" class="panel panel-auth hidden">
         <p class="eyebrow">Étape 1 sur 2</p>
         <h2>Connecte ton compte PRONOTE</h2>
-        <p class="subline">
-          Blocus lit tes devoirs, rien de plus. Par défaut <strong>aucun mot de passe
-          n'est demandé</strong>, et rien n'est coché ni marqué comme lu chez toi.
-        </p>
+        <p class="subline">Lecture seule. Aucun mot de passe demandé en mode QR.</p>
 
         <details class="how" open>
-          <summary>Comment récupérer le QR code sur PRONOTE</summary>
+          <summary>Comment récupérer le QR code</summary>
           <ol class="steps">
-            <li>Ouvre ton <strong>Espace Élève PRONOTE</strong> et <strong>connecte-toi</strong>
-                (sur téléphone : dans un deuxième onglet).</li>
-            <li>Le bouton <strong>QR code</strong> est à côté de ton nom, dans le bandeau du haut.
-                S'il n'apparaît pas sur ton téléphone, demande au navigateur la
-                <strong>« version ordinateur »</strong> du site (menu ⋮ ou « aA »).</li>
-            <li>Choisis toi-même un <strong>code à 4 chiffres</strong>, puis
-                « Générer le QR code » : PRONOTE affiche le QR.</li>
-            <li>Fais une <strong>capture d'écran</strong> de ce QR (il ne contient pas ton mot de passe).</li>
-            <li>Reviens sur cet onglet et envoie la capture.</li>
+            <li>Dans PRONOTE (Espace Élève), ouvre le <strong>bandeau du haut → QR code</strong> (passe en “version ordinateur” sur téléphone).</li>
+            <li>Choisis un <strong>code à 4 chiffres</strong> → Générer.</li>
+            <li>Fais une <strong>capture d'écran</strong> du QR et reviens ici.</li>
           </ol>
-          <p class="hint">
-            C'est la procédure officielle Index Éducation :
-            <a href="https://docs.index-education.com/docs_fr/fr-pronote-support-fiche-957-3557-configurer-l-application-mobile.php"
-               target="_blank" rel="noopener">configurer l'application mobile PRONOTE</a>.
-            Si ton établissement t'a donné un QR sur papier, tu peux aussi l'utiliser.
-          </p>
+          <p class="hint">Procédure officielle : <a href="https://docs.index-education.com/docs_fr/fr-pronote-support-fiche-957-3557-configurer-l-application-mobile.php" target="_blank" rel="noopener">doc Index Éducation</a>.</p>
         </details>
 
         <details class="how">
-          <summary>Ce que Blocus fait — et ce qu'il ne fait jamais</summary>
-          <div class="two-col">
-            <div>
-              <p class="col-title ok">Il fait</p>
-              <ul class="check-list">
-                <li>Lire le travail à faire, le cahier de textes, les informations, la messagerie et les pièces jointes.</li>
-                <li>Trier ce que tu as à rattraper par urgence et par matière prioritaire.</li>
-                <li>Te laisser cocher un devoir comme fait — <em>dans Blocus seulement</em>.</li>
-              </ul>
-            </div>
-            <div>
-              <p class="col-title no">Il ne fait jamais</p>
-              <ul class="cross-list">
-                <li>Garder ton mot de passe lisible : il est chiffré en base, et supprimé à la déconnexion.</li>
-                <li>Cocher un devoir, marquer un message comme lu ou envoyer quoi que ce soit dans PRONOTE.</li>
-                <li>Publier, partager ou revendre tes données.</li>
-                <li>Garder ton code à 4 chiffres : il sert une fois, puis il est oublié.</li>
-              </ul>
-            </div>
-          </div>
-        </details>
-
-        <details class="how">
-          <summary>Ce qui se passe quand tu envoies la capture</summary>
-          <ol class="steps">
-            <li>La capture est lue <strong>sur le serveur de Blocus</strong> pour en extraire le QR. Elle n'est envoyée à aucun service tiers.</li>
-            <li>Tu saisis le <strong>code à 4 chiffres</strong> que tu as choisi. Le QR seul ne suffit pas, et le code expire.</li>
-            <li>Blocus ouvre une session PRONOTE <strong>en lecture seule</strong> et récupère tes cinq onglets.</li>
-            <li>Le jeton de session est <strong>chiffré</strong> dans une base locale. Ton navigateur ne garde qu'un jeton opaque, effacé quand tu fermes l'onglet.</li>
-            <li>Tu peux tout effacer à tout moment : la déconnexion supprime le compte et ses données côté serveur.</li>
-          </ol>
-          <p class="hint">
-            Si tu as un doute sur ce que le site fait, ouvre l'onglet « Ton espace ressources » :
-            tout ce qui est affiché vient de PRONOTE, en lecture seule.
-          </p>
+          <summary>Confidentialité</summary>
+          <ul class="check-list">
+            <li>Lecture seule : rien n'est coché ni marqué comme lu dans PRONOTE.</li>
+            <li>Ton jeton est chiffré, ton code à 4 chiffres est oublié après usage.</li>
+            <li>Déconnexion = suppression du compte côté serveur.</li>
+          </ul>
+          <p class="hint">Aucune donnée n'est partagée ou revendue. Capture lue uniquement sur ce serveur.</p>
         </details>
 
         <p class="paste-hint" id="qrHint">
@@ -208,7 +159,7 @@
         <p class="status">10 questions par jour. Sans LLM, je réponds avec ta liste.</p>
       </section>
 
-      <footer><span>Pronote Blocus <b>·</b> un pas après l'autre.</span><span>Connecté à PRONOTE <i class="footer-dot"></i></span></footer>
+      <footer><span>Pronote Blocus — lecture seule.</span><span>Déconnexion efface tout.</span></footer>
     </main>
   </div>
 
