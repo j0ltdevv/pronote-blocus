@@ -156,8 +156,13 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
   devoir est lu et affiché (📎2), aucun binaire n'est stocké.
 - **Une seule instance** : le service ne prend pas de verrou global. Deux
   processus qui pointent le même `DATA_DIR` se marchent dessus sur SQLite.
-- **Fenêtre de rattrapage figée** : `WINDOW_START` n'est relu qu'au démarrage ;
-  changer la variable demande un `systemctl restart`.
+- **Fenêtre de rattrapage lue à chaque synchro** : `WINDOW_START` est relu à
+  chaque cycle de synchronisation ; une modification de l'environnement du
+  processus (tests, wrapper) prend effet sans restart. Sous systemd, les
+  variables viennent d'`EnvironmentFile` lues au lancement et il n'y a pas
+  d'`ExecReload` : pour changer la fenêtre, édite
+  `/etc/pronote-blocus/pronote-blocus.env` puis `systemctl restart
+  pronote-blocus`.
 - **`digest_hour` n'est pas exposed** : c'est une colonne SQLite, à modifier
   en base si besoin.
 
