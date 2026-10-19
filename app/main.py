@@ -32,7 +32,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import config, crypto, db, instance, llm, render
+from . import backup, config, crypto, db, instance, llm, render
 from .pronote import auth, fetch, ranking
 
 log = logging.getLogger(__name__)
@@ -1236,6 +1236,9 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
         application.bot_data["conn"] = conn
         application.bot_data["cfg"] = cfg
         application.create_task(digest_loop(application, conn, cfg))
+        application.create_task(
+            backup.backup_loop(cfg.db_path, cfg.backups_dir, cfg.backup_keep)
+        )
 
     # Le jeton du bot circule dans les URL des appels Telegram
     # (`…/bot<JETON>/…`). Python-telegram-bot et httpx les journalisent en
@@ -1428,6 +1431,7 @@ def main() -> None:
         conn = db.connect(cfg.db_path)
         db.init_schema(conn)
         db.purge_old_summaries(conn)
+        backup.backup_at_startup(cfg.db_path, cfg.backups_dir, cfg.backup_keep)
         application = build_application(cfg, conn)
         log.info("pronote-blocus démarre en long polling")
         application.run_polling()

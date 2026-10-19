@@ -158,7 +158,8 @@ attaché par le navigateur à une requête venue d'un autre site.
 | `LLM_MESSAGES` | `1` | `0`/`false`/`no` (ou une valeur blanche) = le corps des messages de profs ne sort jamais du serveur ; vide = défaut |
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés, borné à `1..64` ; non entier → `4` |
 | `DIGEST_HOUR` | `18` | heure locale (0-23) à partir de laquelle le résumé quotidien part ; hors bornes → refus de démarrer |
-| `DATA_DIR` | `data` | `app.db`, `locks/` ; chemin relatif = depuis le répertoire courant, `~` est étendu |
+| `BACKUP_KEEP` | `5` | nombre de sauvegardes gardées dans `DATA_DIR/backups/` ; borné à `1..365`, non entier → `5` |
+| `DATA_DIR` | `data` | `app.db`, `locks/`, `backups/` ; chemin relatif = depuis le répertoire courant, `~` est étendu |
 
 Cas limites de `from_env` :
 
@@ -199,6 +200,9 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
 - **`DIGEST_HOUR` figé au démarrage** : la boucle de résumé lit la valeur une
   fois ; la changer demande un `systemctl restart`. La colonne
   `users.digest_hour` reste en base mais n'est plus lue.
+- **Sauvegardes locales** : `DATA_DIR/backups/` est sur le même disque que la
+  base. La rotation (`BACKUP_KEEP`) protège d'une mauvaise manipulation, pas
+  d'une panne disque : copiez régulièrement les fichiers hors du serveur.
 
 ## Déploiement du bot (option)
 
@@ -390,18 +394,45 @@ Si le serveur est derrière un NAT (VPS cloud), restreindre de la même façon l
 
 Deux éléments suffisent à tout restaurer : `APP_SECRET` et la base.
 
+**Sauvegarde automatique.** Au démarrage — si la dernière date de plus d'une
+heure, pour qu'une boucle de redémarrage ne consomme pas la rotation — puis
+toutes les 24 h, le service écrit une copie cohérente de la base dans
+`DATA_DIR/backups/` (`/var/lib/pronote-blocus/backups/`). Elle passe par l'API
+de sauvegarde SQLite (`.backup`), jamais par `cp` : une copie à chaud d'un
+fichier en cours d'écriture peut être corrompue. Les fichiers
+`app-<horodatage UTC>.db` sont en `0600` et la rotation ne garde que les
+`BACKUP_KEEP` plus récents (`5` par défaut). Bot et web peuvent tourner
+ensemble : un `flock` et un contrôle de fraîcheur évitent les doublons.
+
+**Copie hors site** (les sauvegardes locales partagent le disque de la base) :
+
 ```bash
-# Sauvegarde à chaud, cohérente (SQLite en ligne).
 sudo install -d -m 0700 /var/backups/pronote-blocus
-sudo sqlite3 /var/lib/pronote-blocus/app.db \
-     ".backup '/var/backups/pronote-blocus/app-$(date +%F).db'"
+sudo cp -a /var/lib/pronote-blocus/backups/app-*.db /var/backups/pronote-blocus/
+```
+
+Ici `cp` est sans risque : les fichiers source sont des sauvegardes terminées,
+déjà cohérentes.
+
+**Restauration** :
+
+```bash
+sudo systemctl stop pronote-web
+sudo systemctl stop pronote-blocus        # si le bot est installé
+sudo rm -f /var/lib/pronote-blocus/app.db-wal /var/lib/pronote-blocus/app.db-shm
+derniere=$(sudo sh -c 'ls -1 /var/lib/pronote-blocus/backups/app-*.db | tail -n 1')
+sudo install -o pronote-blocus -g pronote-blocus -m 0600 "$derniere" \
+     /var/lib/pronote-blocus/app.db
+sudo systemctl start pronote-web
+sudo systemctl start pronote-blocus       # si le bot est installé
 ```
 
 - **`APP_SECRET`** : à conserver hors du serveur (gestionnaire de mots de passe,
   coffre). La perdre = chaque élève doit refaire un QR ; la fuiter = les jetons
   PRONOTE stockés sont lisibles.
 - **Base** : `/var/lib/pronote-blocus/app.db` (comptes, priorités, état local).
-  Copiez-la avec `.backup` (jamais `cp` : une copie à chaud peut être corrompue).
+  Pour une copie manuelle à tout moment, utilisez `.backup` (jamais `cp` : une
+  copie à chaud peut être corrompue).
 
 ### 6. Rotation des jetons
 
