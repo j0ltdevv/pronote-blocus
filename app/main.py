@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import sqlite3
 import sys
@@ -1349,13 +1350,22 @@ def doctor(env: dict[str, str] | None = None, out=print) -> int:
         ))
 
     ok = True
-    try:
-        _check_secret(cfg.app_secret)
-    except RuntimeError as exc:
-        ok = False
-        out(_doctor_line(False, f"APP_SECRET : {exc}"))
+    source = os.environ if env is None else env
+    provided = (source.get("APP_SECRET") or "").strip()
+    if not provided and cfg.app_secret:
+        # `from_env(require_token=False)` génère et persiste la clé depuis
+        # le mode web zero-config : ce n'est pas une erreur, on le dit.
+        out(_doctor_line(
+            True, "APP_SECRET absent, généré dans DATA_DIR/app_secret"
+        ))
     else:
-        out(_doctor_line(True, "APP_SECRET valide"))
+        try:
+            _check_secret(cfg.app_secret)
+        except RuntimeError as exc:
+            ok = False
+            out(_doctor_line(False, f"APP_SECRET : {exc}"))
+        else:
+            out(_doctor_line(True, "APP_SECRET valide"))
 
     try:
         conn = db.connect(cfg.db_path)
