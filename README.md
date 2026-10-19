@@ -129,7 +129,7 @@ cookie ne sert que de repli quand aucun en-tête n'est présent.
 | `PASSWORD_ENT` | `lyceeconnecte_aquitaine` | ENT par défaut pour la connexion par mot de passe |
 | `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage ; elle court jusqu'à aujourd'hui + 45 jours (`FORWARD_DAYS`) |
 | `DEFAULT_PRONOTE_URL` | `https://0332722e.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
-| `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile ; lu en config mais **non appliqué** à la connexion (voir « Limites connues ») |
+| `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile appliqués à la reconnexion par jeton ; vide → constante par défaut |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
 | `LLM_MESSAGES` | `1` | `0` = le corps des messages de profs ne sort jamais du serveur |
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
@@ -148,9 +148,6 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
   entre deux (`MAX_CONTENT_READS`, `CONTENT_DELAY`). Au-delà, `/cours` reste
   partiel jusqu'à la synchro suivante : chaque lecture de contenu est une
   requête réseau, et le serveur PRONOTE n'aime pas les rafales.
-- **`PRONOTE_MOBILE_QUERY` est inopérant** : la valeur est lue dans la config
-  mais `auth.mobile_url` utilise la constante `DEFAULT_MOBILE_QUERY`. Seule
-  cette constante compte pour la connexion par jeton.
 - **`DATA_DIR/uploads/` est créé mais inutilisé** : seuls `app.db` et
   `locks/` portent des données.
 - **Pièces jointes jamais téléchargées** : seul le nombre de fichiers d'un
