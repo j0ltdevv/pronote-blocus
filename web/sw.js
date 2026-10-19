@@ -1,8 +1,8 @@
 /* Pronote Blocus — Service Worker */
-/* v11 : procédure QR réelle (session PRONOTE requise) */
+/* v12 : en-têtes de sécurité stricts (page hors ligne externalisée) */
 
-const CACHE_NAME = 'pronote-blocus-v11';
-const API_CACHE = 'pronote-blocus-api-v11';
+const CACHE_NAME = 'pronote-blocus-v12';
+const API_CACHE = 'pronote-blocus-api-v12';
 const OFFLINE_PAGE = '/offline.html';
 
 const APP_SHELL_URLS = [
@@ -12,6 +12,8 @@ const APP_SHELL_URLS = [
   '/styles.css',
   '/manifest.json',
   '/offline.html',
+  '/offline.css',
+  '/offline.js',
   '/fonts/bricolage.woff2',
   '/icons/icon.svg'
 ];

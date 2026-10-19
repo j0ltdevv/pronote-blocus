@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import deps
 from .routes import auth, chat, items
+from .security import SecurityHeadersMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 DEFAULT_WEB_ORIGIN = "http://localhost:8000"
@@ -40,6 +41,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ajouté en dernier : enveloppe aussi CORS, les erreurs et les fichiers statiques.
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router)
 app.include_router(items.router)
