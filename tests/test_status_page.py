@@ -77,7 +77,13 @@ def test_status_et_status_json_sans_authentification(client):
     assert reponse.status_code == 200
     assert reponse.headers["content-type"].startswith("application/json")
     donnees = json.loads(reponse.text)
-    assert set(donnees) == {"uptime_seconds", "last_sync_at", "users", "last_error"}
+    assert set(donnees) == {
+        "uptime_seconds",
+        "last_sync_at",
+        "users",
+        "last_error",
+        "latency_ms",
+    }
 
 
 def test_status_utilise_une_feuille_externe(client):

@@ -338,6 +338,16 @@ curl -s http://127.0.0.1:8000/status.json # uptime, synchro, erreurs
 réussie, nombre d'utilisateurs et dernière erreur. Aucune donnée d'élève n'y
 figure ; seuls des libellés d'erreur connus sont affichés.
 
+`/status.json` expose aussi `latency_ms` : `p50`/`p95` des requêtes des cinq
+dernières minutes (`count`, `window_seconds`), calculés en mémoire. Chaque
+requête laisse une ligne de log de la forme
+`2026-10-20 01:47:22,116 INFO server.timing : requête method=GET path=/api/items status=200 ms=12.3`
+— jamais le corps, la query string ni un secret.
+
+```bash
+journalctl -u pronote-web -o cat | grep 'requête method=' | tail
+```
+
 L'unité n'écoute **que sur la boucle locale** (`--host 127.0.0.1`). Ne jamais
 la passer en `0.0.0.0` : le TLS et l'accès public passent par le reverse proxy.
 

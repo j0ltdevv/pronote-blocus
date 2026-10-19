@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from app.pronote import fetch
 
 from ..deps import DBDep
+from ..timing import TIMINGS
 
 router = APIRouter(tags=["status"])
 
@@ -58,6 +59,8 @@ def snapshot(conn) -> dict:
         "last_sync_at": row["last_sync_at"],
         "users": int(row["users"]),
         "last_error": _public_error(erreur["last_error"] if erreur else None),
+        # p50/p95 des cinq dernières minutes ; `None` tant qu'aucune requête.
+        "latency_ms": TIMINGS.snapshot(),
     }
 
 
