@@ -482,7 +482,11 @@ def sync_user(
             return SyncResult(False, ERR_TOKEN, [], None, phase, 0)
 
         try:
-            client = auth.token_login(creds, account_pin=creds.get("account_pin"))
+            client = auth.token_login(
+                creds,
+                account_pin=creds.get("account_pin"),
+                mobile_query=cfg.mobile_query,
+            )
             # Le login réussit a invalidé le jeton précédent : on écrit le
             # nouveau TOUT DE SUITE, dans la même section critique.
             db.save_credentials(
