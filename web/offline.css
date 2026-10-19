@@ -1,0 +1,65 @@
+/* Page hors ligne — style autonome, servi depuis l'origine ('self'). */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/fonts/bricolage.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+:root {
+  color-scheme: light dark;
+  --paper: #f7f8fc;
+  --ink: #1a2380;
+  --ink-soft: #586099;
+  --margin: #cf2a3f;
+  --on-ink: #f7f8fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #12152b;
+    --ink: #dfe2ff;
+    --ink-soft: #9aa1d6;
+    --margin: #ff6479;
+    --on-ink: #12152b;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font: 450 1rem/1.45 "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: max(2.5rem, env(safe-area-inset-top)) 1rem 2rem calc(6rem + 0.875rem);
+  position: relative;
+}
+body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6rem;
+  width: 1.5px;
+  background: var(--margin);
+}
+main { max-width: 26rem; }
+h1 {
+  font-weight: 800;
+  font-size: clamp(1.875rem, 8.5vw, 2.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+p { margin-top: 0.75rem; color: var(--ink-soft); }
+button {
+  min-height: 3rem;
+  margin-top: 1.5rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

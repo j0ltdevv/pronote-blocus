@@ -313,16 +313,20 @@ sudo systemctl reload caddy
 ```
 
 Le `Caddyfile` fournit : TLS automatique, reverse proxy vers
-`127.0.0.1:8000`, HSTS, `X-Content-Type-Options: nosniff`,
-`Referrer-Policy`, `X-Frame-Options` et une CSP compatible PWA (le service
-worker `sw.js` est autorisé par `worker-src 'self'`). La taille de corps est
+`127.0.0.1:8000`, HSTS et masquage du serveur amont. La taille de corps est
 limitée à 10 Mo pour l'upload du QR.
 
+Les autres en-têtes (`Content-Security-Policy`, `X-Content-Type-Options`,
+`Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`) sont posés par
+l'application elle-même (`server/security.py`), donc valables aussi en
+développement et derrière n'importe quel proxy ; le `Caddyfile` reprend la
+même CSP en défense en profondeur.
+
 La CSP est stricte (`script-src 'self' ; style-src 'self'`, sans
-`'unsafe-inline'`) pour l'app shell. **Seule exception** : `/offline.html`,
-page de secours dont le style et le script sont en ligne — sa CSP est
-assouplie par une directive différée dans le `Caddyfile`, sans donnée
-utilisateur ni origine externe.
+`'unsafe-inline'`) pour l'app shell **et** la page hors ligne : `offline.html`
+charge désormais `/offline.css` et `/offline.js` au lieu de code en ligne.
+`img-src` autorise `blob:` pour l'aperçu local du QR et `data:` pour les
+images générées côté client.
 
 ### 4. Pare-feu
 
