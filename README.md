@@ -118,6 +118,13 @@ redémarrage du serveur. Le QR — ou les identifiants — ne servent donc qu'un
 fois par trimestre. `Authorization: Bearer` reste prioritaire sur le cookie ; le
 cookie ne sert que de repli quand aucun en-tête n'est présent.
 
+### Tentatives de connexion
+
+Cinq échecs d'identifiants par IP sur cinq minutes bloquent les tentatives
+suivantes en `429` avec un en-tête `Retry-After`. Le compteur vit en mémoire et
+oublie tout seul les échecs sortis de la fenêtre ; un succès n'est jamais
+compté comme un échec.
+
 ## Configuration (environnement, web et bot)
 
 | Variable | Défaut | Rôle |
