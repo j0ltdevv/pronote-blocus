@@ -392,3 +392,25 @@ body.is-guest .mobile-menu{display:none}
 @media(prefers-reduced-motion:reduce){
   *{scroll-behavior:auto !important; transition:none !important}
 }
+
+/* ── rattrapage : plan sur 5 jours ─────────────────────────────────────── */
+.plan-title{margin:0; font:700 30px/1.1 var(--display); letter-spacing:-.03em}
+.plan-progress{height:4px; background:var(--line); margin:22px 0 8px; overflow:hidden}
+.plan-progress span{display:block; height:100%; width:0; background:var(--green); transition:width .2s ease}
+.plan-day{margin:24px 0 0; border-top:1px solid var(--line); padding-top:14px}
+.plan-day header{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:6px}
+.plan-day header h3{margin:0; font:600 11px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.plan-day header span{font:500 11px/1 var(--mono); color:var(--faint)}
+.plan-row{display:flex; gap:14px; align-items:flex-start; padding:14px 0; border-bottom:1px solid var(--line)}
+.plan-row:last-child{border-bottom:0}
+.plan-check{
+  width:26px; height:26px; flex:0 0 26px; display:grid; place-items:center;
+  border:1px solid var(--line-strong); border-radius:50%;
+  background:transparent; color:transparent; cursor:pointer; font-size:12px; line-height:1;
+}
+.plan-check:hover{border-color:var(--green)}
+.plan-check.active{background:var(--green); border-color:var(--green); color:#fff}
+.plan-body h3{margin:0 0 3px; font:600 15px/1.35 var(--body)}
+.plan-body p{margin:0; color:var(--faint); font:500 11px/1.4 var(--mono); letter-spacing:.02em}
+.plan-row.is-done h3{color:var(--muted); text-decoration:line-through}
+.plan-replan{margin-top:28px}
