@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
 
 from . import crypto
 
@@ -97,6 +100,25 @@ class LockedConnection(sqlite3.Connection):
             return super().__exit__(exc_type, exc, tb)
         finally:
             self._lock.release()
+
+@contextmanager
+def _write_tx(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """Transaction d'écriture qui prend le verrou SQLite AVANT le premier SELECT.
+
+    `with conn:` ne démarre la transaction qu'au premier INSERT/UPDATE/DELETE :
+    un SELECT en tête lit hors transaction. Deux connexions lisent alors le
+    même compteur et la seconde écriture écrase la première (mesuré : plafond
+    de 10, 20 questions acceptées, compteur à 10). `BEGIN IMMEDIATE` réserve
+    l'écriture tout de suite ; les autres connexions attendent `busy_timeout`
+    au lieu de bâtir leur décision sur un état périmé.
+
+    Si l'appelant a déjà ouvert une transaction, on s'y rattache : le verrou
+    de `LockedConnection` sérialise alors les threads de la même connexion.
+    """
+    with conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        yield conn
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -192,10 +214,37 @@ def connect(path: str | Path) -> sqlite3.Connection:
         str(path), timeout=30, check_same_thread=False, factory=LockedConnection
     )
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=30000")
+    _configure(conn)
     return conn
+
+#: Le passage en WAL exige un verrou exclusif bref que `busy_timeout` ne
+#: couvre pas : deux ouvertures simultanées d'une base neuve se répondent
+#: `database is locked` (mesuré sous quatre threads). On réessaie ~1 s.
+_WAL_ATTEMPTS = 20
+_WAL_BACKOFF = 0.05
+
+def _configure(conn: sqlite3.Connection) -> None:
+    """Pose les pragmas de connexion, en réessayant le passage en WAL.
+
+    Une fois WAL posé, la demande suivante ne prend plus de verrou : la
+    contention ne concerne que la toute première ouverture.
+    """
+    # `busy_timeout` d'abord : les écritures qui suivent doivent attendre.
+    conn.execute("PRAGMA busy_timeout=30000")
+    for essai in range(_WAL_ATTEMPTS):
+        try:
+            row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or essai == _WAL_ATTEMPTS - 1:
+                raise
+        else:
+            if row is not None and str(row[0]).lower() == "wal":
+                break
+            if essai == _WAL_ATTEMPTS - 1:
+                mode = row[0] if row else "?"
+                raise RuntimeError(f"impossible d'activer WAL : {mode}")
+        time.sleep(_WAL_BACKOFF)
+    conn.execute("PRAGMA foreign_keys=ON")
 
 
 # Colonnes attendues dans `users` pour la migration idempotente.
@@ -224,11 +273,15 @@ _USERS_COLUMNS: list[tuple[str, str, str | None]] = [
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    with conn:
-        conn.executescript(SCHEMA)
-        # Migration idempotente : complète `users` sur les bases existantes
-        # (SQLite ignore `ADD COLUMN` si la colonne est déjà là, mais on
-        # vérifie quand même via PRAGMA pour être sûr).
+    # `executescript` commite avant de lancer le script et les CREATE TABLE
+    # sont idempotents : la contention y est absorbée par `busy_timeout`.
+    conn.executescript(SCHEMA)
+    # Les ALTER, eux, doivent être lus ET écrits sous le même verrou. En
+    # autocommit (les DDL n'ouvrent aucune transaction implicite), le bot et
+    # le serveur web démarrant ensemble sur une base ancienne lisent tous
+    # deux `table_info` avant l'ALTER de l'autre, et le second échoue sur
+    # `duplicate column name` (mesuré).
+    with _write_tx(conn):
         existing = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(users)")
@@ -238,6 +291,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(
                     f"ALTER TABLE users ADD COLUMN {name} {col_type}"
                 )
+                existing.add(name)
 
 
 # ─────────────────────────── identifiants ───────────────────────────
@@ -644,7 +698,7 @@ def bump_llm_count(
     écrire : un appel attardé au passage de minuit ne doit pas faire reculer la
     date du compteur, ce qui rouvrirait le quota du jour courant.
     """
-    with conn:
+    with _write_tx(conn):
         row = conn.execute(
             "SELECT llm_day, llm_count FROM users WHERE id = ?", (user_id,)
         ).fetchone()
