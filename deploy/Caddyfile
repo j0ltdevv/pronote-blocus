@@ -34,25 +34,14 @@ pronote.example.org {
 
 		# CSP compatible PWA : tout est servi depuis l'origine ('self'), y
 		# compris le service worker (worker-src) et le manifeste. L'app shell
-		# (index.html, app.js, styles.css) n'utilise NI script NI style inline,
-		# donc pas de 'unsafe-inline'. `data:` est toléré pour les images
-		# générées localement (QR de secours), `frame-ancestors 'none'`
-		# interdit l'inclusion dans une iframe tierce.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# et la page hors ligne n'utilisent NI script NI style inline, donc pas
+		# de 'unsafe-inline'. `data:` et `blob:` couvrent les images générées
+		# localement (QR de secours, aperçu avant envoi) ; `frame-ancestors
+		# 'none'` interdit l'inclusion dans une iframe tierce. La même CSP est
+		# posée par l'application (server/security.py).
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; form-action 'self'"
 
 		# Masque la version du serveur amont.
 		-Server
-	}
-
-	# Exception : offline.html est une page de secours autonome dont le style
-	# et le script sont EN LIGNE (y compris un onclick=), mise en cache par le
-	# service worker. La CSP stricte la casserait ; on l'assouplit pour ce
-	# SEUL fichier. La page ne contient aucune donnée utilisateur et n'appelle
-	# aucune origine externe : le risque est nul. `defer` fait appliquer cette
-	# directive APRÈS la CSP globale du bloc précédent (elle-même différée à
-	# cause de `-Server`), et donc la remplace pour /offline.html.
-	header /offline.html {
-		defer
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 }
