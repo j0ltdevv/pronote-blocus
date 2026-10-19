@@ -313,8 +313,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now pronote-web
 systemctl status pronote-web            # active (running)
 curl -s http://127.0.0.1:8000/health    # {"status":"ok"}
-curl -s http://127.0.0.1:8000/healthz   # {"status":"ok","db":"ok"} (503 si la base ne répond pas)
+curl -s http://127.0.0.1:8000/healthz     # {"status":"ok","db":"ok"} (503 si la base ne répond pas)
+curl -s http://127.0.0.1:8000/status.json # uptime, synchro, erreurs
 ```
+
+`/status` (HTML) et `/status.json` sont publics : uptime, dernière synchro
+réussie, nombre d'utilisateurs et dernière erreur. Aucune donnée d'élève n'y
+figure ; seuls des libellés d'erreur connus sont affichés.
 
 L'unité n'écoute **que sur la boucle locale** (`--host 127.0.0.1`). Ne jamais
 la passer en `0.0.0.0` : le TLS et l'accès public passent par le reverse proxy.
