@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from . import deps
+from .errors import ErrorPageMiddleware
 from .routes import auth, chat, items, status
 from .security import SecurityHeadersMiddleware
 
@@ -46,6 +47,10 @@ async def _validation_erreur(_request, exc):  # noqa: ANN001
     ]
     return JSONResponse(status_code=422, content={"detail": erreurs})
 
+
+# Posé avant CORS et les en-têtes de sécurité (donc à l'intérieur) : la
+# réponse d'erreur traverse encore CORS et reçoit les en-têtes de sécurité.
+app.add_middleware(ErrorPageMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
