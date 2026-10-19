@@ -16,6 +16,8 @@ INT64_MIN = -(2**63)
 INT64_MAX = 2**63 - 1
 #: Plafond de `MAX_CONCURRENT_SYNCS` : au-delà, c'est une faute de frappe.
 MAX_SYNCS_CEILING = 64
+#: Plafond de `BACKUP_KEEP` : au-delà, c'est une faute de frappe.
+MAX_BACKUPS = 365
 
 MOIS_FR = {
     "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5,
@@ -42,6 +44,7 @@ class Config:
     llm_model: str
     llm_messages: bool
     max_concurrent_syncs: int
+    backup_keep: int
     allow_password_login: bool
     password_ent: str
     db_path: Path
@@ -54,6 +57,10 @@ class Config:
     @property
     def locks_dir(self) -> Path:
         return self.data_dir / "locks"
+
+    @property
+    def backups_dir(self) -> Path:
+        return self.data_dir / "backups"
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -112,6 +119,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
     - variable absente, vide ou blanche et défaut documenté → défaut, sauf
       `LLM_MESSAGES` où une valeur blanche désactive les messages ;
     - `MAX_CONCURRENT_SYNCS` ramené dans 1..64, non entier → 4 ;
+    - `BACKUP_KEEP` ramené dans 1..365, non entier → 5 ;
     - `ADMIN_CHAT_ID` hors 64 bits → erreur ;
     - URL dont le port sort de 1..65535 → erreur ;
     - `DATA_DIR` relatif conservé tel quel (résolu depuis le répertoire courant).
@@ -196,6 +204,12 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
     except ValueError:
         concurrency = 4
     concurrency = min(MAX_SYNCS_CEILING, max(1, concurrency))
+    # 0 supprimerait la sauvegarde qu'on vient d'écrire : plancher à 1.
+    try:
+        backup_keep = int(get("BACKUP_KEEP") or "5")
+    except ValueError:
+        backup_keep = 5
+    backup_keep = min(MAX_BACKUPS, max(1, backup_keep))
     default_pronote_url = get("DEFAULT_PRONOTE_URL") or DEFAULT_PRONOTE_URL
     _check_url_port("DEFAULT_PRONOTE_URL", default_pronote_url)
     llm_base_url = get("LLM_BASE_URL").rstrip("/")
@@ -213,6 +227,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
         llm_model=get("LLM_MODEL"),
         llm_messages=get("LLM_MESSAGES", "1").lower() not in ("0", "false", "no", ""),
         max_concurrent_syncs=concurrency,
+        backup_keep=backup_keep,
         allow_password_login=(
             get("ALLOW_PASSWORD_LOGIN", "1").lower() not in ("0", "false", "no")
         ),

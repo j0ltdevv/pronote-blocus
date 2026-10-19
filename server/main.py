@@ -6,7 +6,9 @@ Lancement : `uvicorn server.main:app --reload` depuis la racine du projet.
 
 from __future__ import annotations
 
+import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,6 +16,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+from app import backup
 from . import deps
 from .routes import auth, chat, items, status
 from .security import SecurityHeadersMiddleware
@@ -33,7 +37,31 @@ def web_origins() -> list[str]:
     return origins or [DEFAULT_WEB_ORIGIN]
 
 
-app = FastAPI(title="Pronote Blocus", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Sauvegarde de la base au démarrage, puis toutes les 24 h.
+
+    Le bot fait de même : un `flock` et un contrôle de fraîcheur empêchent
+    les deux processus de doubler les fichiers.
+    """
+    cfg = deps.get_cfg()
+    await asyncio.to_thread(
+        backup.backup_at_startup, cfg.db_path, cfg.backups_dir, cfg.backup_keep
+    )
+    task = asyncio.create_task(
+        backup.backup_loop(cfg.db_path, cfg.backups_dir, cfg.backup_keep)
+    )
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Pronote Blocus", version="0.1.0", lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
