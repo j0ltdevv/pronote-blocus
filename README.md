@@ -120,10 +120,27 @@ cookie ne sert que de repli quand aucun en-tête n'est présent.
 
 ### Tentatives de connexion
 
-Cinq échecs d'identifiants par IP sur cinq minutes bloquent les tentatives
-suivantes en `429` avec un en-tête `Retry-After`. Le compteur vit en mémoire et
-oublie tout seul les échecs sortis de la fenêtre ; un succès n'est jamais
-compté comme un échec.
+Cinq échecs d'identifiants pour un même compte derrière une même IP sur cinq
+minutes bloquent les tentatives suivantes en `429` avec un en-tête
+`Retry-After`. Le compteur vit en mémoire et oublie tout seul les échecs sortis
+de la fenêtre ; un succès n'est jamais compté comme un échec.
+
+### Protection CSRF
+
+Le cookie `httpOnly` authentifie aussi les écritures (`/api/chat`,
+`/api/items/done`, `/refresh`, `/logout`). Pour qu'une page tierce ne puisse pas
+les déclencher à l'insu de l'élève, chaque `POST` doit présenter un jeton
+**lié à la session**, en en-tête `X-CSRF-Token` ou dans le champ de formulaire
+`csrf_token`. Un `POST` sans jeton — ou avec celui d'une autre session — reçoit
+un **403** explicite.
+
+Le frontend demande ce jeton à `GET /api/auth/csrf` au chargement ; `/pin` et
+`/password` le rendent aussi dans `csrf_token` et le doublent dans un cookie
+`blocus_csrf` (`SameSite=Lax`). Avant connexion, ce même endpoint fournit un
+jeton de pré-connexion : un navigateur, qui envoie `Origin`, doit le présenter
+pour appeler `/api/auth/qr`, `/password` ou `/pin`. Un client qui utilise
+`Authorization: Bearer` n'a pas besoin de jeton CSRF : cet en-tête n'est jamais
+attaché par le navigateur à une requête venue d'un autre site.
 
 ## Configuration (environnement, web et bot)
 
