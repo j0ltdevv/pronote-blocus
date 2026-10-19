@@ -225,7 +225,155 @@ function render() {
     hide("empty");
     show("homework");
   }
+  if (!$("planView").classList.contains("hidden")) renderPlan();
 }
+
+// ── Rattrapage : plan sur 5 jours ─────────────────────────────────────
+// Un devoir non fait = une séance. On répartit les retards et les
+// échéances proches sur les 5 prochains jours, ~45 min par jour.
+const PLAN_DAYS = 5;
+const PLAN_MINUTES = 45;
+
+function estimateMinutes(it) {
+  const base = it.kind === "pdf" ? 30 : it.kind === "ppt" ? 25 : 20;
+  return String(it.title || "").length > 60 ? base + 10 : base;
+}
+
+function planStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function loadPlan() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("pronote_plan") || "null");
+    return raw && raw.stamp === planStamp() ? raw.map : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePlan(map) {
+  try {
+    localStorage.setItem("pronote_plan", JSON.stringify({ stamp: planStamp(), map }));
+  } catch { /* mode privé : plan recalculé à chaque visite */ }
+}
+
+function buildPlan() {
+  const today = startOfToday();
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + PLAN_DAYS);
+  const todo = items
+    .filter((it) => {
+      if (it.done) return false;
+      const day = parseDay(it.due);
+      return !day || day <= horizon;
+    })
+    .sort(byDue);
+  const map = {};
+  let day = 0;
+  let budget = 0;
+  for (const it of todo) {
+    const min = estimateMinutes(it);
+    if (day < PLAN_DAYS - 1 && budget > 0 && budget + min > PLAN_MINUTES) {
+      day += 1;
+      budget = 0;
+    }
+    map[String(it.id)] = day;
+    budget += min;
+  }
+  return map;
+}
+
+function dayLabel(offset) {
+  if (offset === 0) return "Aujourd'hui";
+  if (offset === 1) return "Demain";
+  const d = startOfToday();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+}
+
+function planRow(it) {
+  const id = String(it.id);
+  return `
+    <article class="plan-row${it.done ? " is-done" : ""}" data-id="${escapeHtml(id)}">
+      <button class="plan-check${it.done ? " active" : ""}" data-done="${escapeHtml(id)}"
+              aria-label="${it.done ? "Remettre à faire" : "Marquer comme fait"}">${it.done ? "✓" : ""}</button>
+      <div class="plan-body">
+        <h3>${escapeHtml(it.title || "Devoir")}</h3>
+        <p>${escapeHtml(it.subject || "—")} · ${estimateMinutes(it)} min</p>
+      </div>
+    </article>`;
+}
+
+function renderPlan() {
+  const host = $("planDays");
+  if (!host) return;
+  let map = loadPlan();
+  if (!map) {
+    map = buildPlan();
+    savePlan(map);
+  }
+  const planned = items.filter((it) => map[String(it.id)] !== undefined);
+  const remaining = planned.filter((it) => !it.done);
+  const totalMin = remaining.reduce((sum, it) => sum + estimateMinutes(it), 0);
+  const usedDays = new Set(remaining.map((it) => map[String(it.id)])).size;
+
+  $("navPlan").textContent = String(remaining.length);
+  $("planSummary").textContent = remaining.length
+    ? `${remaining.length} ${plural(remaining.length, "devoir", "devoirs")} · ~${totalMin} min · ${usedDays} ${plural(usedDays, "jour", "jours")}`
+    : "Rien à rattraper. Ton plan est vide.";
+
+  const done = planned.length - remaining.length;
+  const pct = planned.length ? Math.round((done / planned.length) * 100) : 0;
+  const bar = $("planBar");
+  if (bar) bar.style.width = `${pct}%`;
+  const progress = host.parentElement?.querySelector(".plan-progress");
+  if (progress) progress.setAttribute("aria-valuenow", String(pct));
+
+  if (!remaining.length) {
+    host.innerHTML = `<p class="empty">Tout est fait. Rien à étaler.</p>`;
+    return;
+  }
+  const blocks = [];
+  for (let d = 0; d < PLAN_DAYS; d += 1) {
+    const list = remaining.filter((it) => map[String(it.id)] === d);
+    if (!list.length) continue;
+    const min = list.reduce((sum, it) => sum + estimateMinutes(it), 0);
+    blocks.push(`
+      <section class="plan-day">
+        <header><h3>${escapeHtml(dayLabel(d))}</h3><span>${list.length} · ${min} min</span></header>
+        ${list.map(planRow).join("")}
+      </section>`);
+  }
+  host.innerHTML = blocks.join("");
+}
+
+function showPlan() {
+  hide("homework", "empty", "authQr", "authPin", "chat");
+  show("planView");
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.id === "planNav"));
+  renderPlan();
+}
+
+$("planNav").addEventListener("click", (e) => {
+  e.preventDefault();
+  showPlan();
+});
+
+$("replanBtn").addEventListener("click", () => {
+  const map = buildPlan();
+  savePlan(map);
+  renderPlan();
+  toast("Plan recalculé");
+});
+
+$("planView").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-done]");
+  if (!btn) return;
+  await toggleDone(btn.dataset.done, btn.closest(".plan-row"));
+  renderPlan();
+});
 
 // ── Load items ────────────────────────────────────────────────────────
 async function loadItems({ silent = false } = {}) {
@@ -253,16 +401,13 @@ async function loadItems({ silent = false } = {}) {
 }
 
 // ── Mark done ─────────────────────────────────────────────────────────
-$("homework").addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-done]");
-  if (!btn) return;
-  const id = btn.dataset.done;
+async function toggleDone(id, card) {
   const item = items.find((i) => String(i.id) === id);
   if (!item) return;
 
   const previous = item.done;
   item.done = !previous;
-  btn.closest(".document-card").classList.toggle("is-done", item.done);
+  card?.classList.toggle("is-done", item.done);
   const pause = new Promise((r) => setTimeout(r, REDUCED ? 0 : 320));
 
   try {
@@ -279,6 +424,12 @@ $("homework").addEventListener("click", async (e) => {
   toast(item.done ? "Marqué comme fait" : "Remis à faire");
   try { items = await fetchItems(); } catch { /* garde l'état local */ }
   render();
+}
+
+$("homework").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-done]");
+  if (!btn) return;
+  await toggleDone(btn.dataset.done, btn.closest(".document-card"));
 });
 
 // ── Filtres (sidebar + mobile) ─────────────────────────────────────
@@ -286,7 +437,7 @@ function setFilter(next) {
   filter = next;
   document.querySelectorAll(".nav-item[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
   document.querySelectorAll(".mf[data-filter]").forEach((n) => n.classList.toggle("active", n.dataset.filter === next));
-  show("homework"); render();
+  hide("planView"); show("homework"); render();
 }
 document.querySelectorAll("[data-filter]").forEach((link) => {
   link.addEventListener("click", (e) => { e.preventDefault(); setFilter(link.dataset.filter); });

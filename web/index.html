@@ -22,6 +22,7 @@
       <nav aria-label="Navigation principale">
         <p class="nav-label">Mon espace</p>
         <a class="nav-item active" href="#homework" data-filter="all"><span class="nav-icon">▤</span> Tous les devoirs <em id="navAll">0</em></a>
+        <a class="nav-item" href="#plan" id="planNav"><span class="nav-icon">◷</span> Rattrapage <em id="navPlan">0</em></a>
         <a class="nav-item" href="#homework" data-filter="late"><span class="nav-icon">!</span> En retard <em id="navLate">0</em></a>
         <a class="nav-item" href="#homework" data-filter="soon"><span class="nav-icon">✓</span> À venir <em id="navSoon">0</em></a>
         <a class="nav-item" href="#homework" data-filter="done"><span class="nav-icon">★</span> Faits <em id="navDone">0</em></a>
@@ -127,6 +128,17 @@
       </section>
 
       <div id="loading" class="loading hidden" role="status">Chargement de tes devoirs…</div>
+
+      <section id="planView" class="hidden" aria-labelledby="planTitle">
+        <p class="eyebrow">Rattrapage</p>
+        <h2 id="planTitle" class="plan-title">Ton plan</h2>
+        <p class="subline" id="planSummary"></p>
+        <div class="plan-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression du rattrapage">
+          <span id="planBar"></span>
+        </div>
+        <div id="planDays"></div>
+        <button class="open-doc plan-replan" id="replanBtn" type="button">Replanifier</button>
+      </section>
 
       <section id="homework" class="hidden">
         <section class="section-head" id="lateSection">
