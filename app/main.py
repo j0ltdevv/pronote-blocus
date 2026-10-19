@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sqlite3
+import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -1295,7 +1297,95 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
     return application
 
 
+def _doctor_line(ok: bool, message: str) -> str:
+    return f"{'OK' if ok else 'KO':<4} {message}"
+
+
+def _schema_tables() -> tuple[str, ...]:
+    """Tables déclarées dans `db.SCHEMA` (source de vérité, pas de copie)."""
+    return tuple(
+        re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", db.SCHEMA)
+    )
+
+
+def _check_secret(secret: str) -> None:
+    if not secret:
+        raise RuntimeError(
+            "APP_SECRET manquant. Génère-le avec : python -c "
+            '"from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
+        )
+    from cryptography.fernet import Fernet
+
+    try:
+        Fernet(secret.encode())
+    except Exception as exc:  # noqa: BLE001 - toute clé illisible est fatale
+        raise RuntimeError(
+            f"APP_SECRET invalide (clé Fernet attendue) : {exc}"
+        ) from exc
+
+
+def doctor(env: dict[str, str] | None = None, out=print) -> int:
+    """Diagnostic hors ligne : config, base, schéma. Ne démarre pas le bot.
+
+    Le jeton Telegram n'est PAS requis (l'objectif est justement de vérifier
+    l'environnement avant de l'avoir) ; APP_SECRET et la base le sont, car
+    sans eux le bot ne peut ni chiffrer les jetons PRONOTE ni tourner.
+
+    Rend 0 si tout est bon, 1 sinon. Chaque ligne est préfixée OK/KO.
+    """
+    try:
+        cfg = config.from_env(env, require_token=False)
+    except RuntimeError as exc:
+        out(_doctor_line(False, f"configuration : {exc}"))
+        return 1
+    out(_doctor_line(True, f"configuration chargée (DATA_DIR={cfg.data_dir})"))
+
+    if cfg.telegram_token:
+        out(_doctor_line(True, "TELEGRAM_BOT_TOKEN présent"))
+    else:
+        out(_doctor_line(
+            True, "TELEGRAM_BOT_TOKEN absent (non requis avec --doctor)"
+        ))
+
+    ok = True
+    try:
+        _check_secret(cfg.app_secret)
+    except RuntimeError as exc:
+        ok = False
+        out(_doctor_line(False, f"APP_SECRET : {exc}"))
+    else:
+        out(_doctor_line(True, "APP_SECRET valide"))
+
+    try:
+        conn = db.connect(cfg.db_path)
+    except (RuntimeError, sqlite3.Error) as exc:
+        out(_doctor_line(False, f"base inaccessible : {exc}"))
+        return 1
+    try:
+        out(_doctor_line(True, f"base ouverte : {cfg.db_path}"))
+        existing = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        expected = _schema_tables()
+        missing = [name for name in expected if name not in existing]
+        if missing:
+            ok = False
+            out(_doctor_line(
+                False, f"schéma incomplet, tables manquantes : {', '.join(missing)}"
+            ))
+        else:
+            out(_doctor_line(True, f"schéma complet ({len(expected)} tables)"))
+    finally:
+        conn.close()
+
+    return 0 if ok else 1
+
+
 def main() -> None:
+    if "--doctor" in sys.argv[1:]:
+        raise SystemExit(doctor())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s : %(message)s",
