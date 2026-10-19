@@ -39,6 +39,36 @@ redémarrages.
    **à venir**, **faits**.
 4. Il coche ce qu'il a fait — dans Blocus uniquement, jamais dans PRONOTE.
 
+## Recherche et filtre par matière (web)
+
+Au-dessus de la liste, un champ de recherche et un sélecteur de matière se
+cumulent. Les deux filtrent la liste **déjà chargée** : aucune requête réseau,
+aucun rechargement de page pendant la frappe.
+
+- recherche insensible à la casse et aux accents (`mathmatiques` trouve
+  « Mathématiques »), ligatures comprises (`coeur` trouve « cœur ») ;
+- le sélecteur ne propose que les matières présentes dans la liste ;
+- l'état est conservé dans `sessionStorage` (`pronote_search`,
+  `pronote_subject`) : il survit à un rechargement de l'onglet, pas à une
+  déconnexion ni à la fermeture de l'onglet ; une matière mémorisée qui
+  n'existe plus est ignorée et le select revient sur « Toutes les matières » ;
+- quand rien ne correspond, un message propose « Effacer les filtres ».
+
+Vérification manuelle (pas de test automatisé : la logique est côté client) :
+
+1. Se connecter, taper `MATHEMATIQUES` : seules les cartes de maths restent,
+   et le titre comme les compteurs suivent.
+2. Taper `coeur` : le devoir « Le cœur » apparaît.
+3. Choisir une matière : la recherche et la matière se cumulent.
+4. Combiner `zzz` et une matière : « Aucun devoir… » s'affiche ; « Effacer les
+   filtres » rétablit la liste complète.
+5. Recharger l'onglet : la recherche et la matière sont toujours actives.
+6. Dans la console, `sessionStorage.setItem("pronote_subject","MatièreDisparue")`
+   puis recharger : la liste complète revient, select sur « Toutes les
+   matières ».
+7. Se déconnecter : les deux champs sont vidés.
+8. Pendant la frappe, l'onglet Réseau ne montre aucun appel à `/api/items`.
+
 ## Bot Telegram (option)
 
 ```bash

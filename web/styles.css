@@ -426,3 +426,17 @@ body.is-guest .mobile-menu{display:none}
 .list-tools select{flex:0 0 auto; max-width:260px}
 .list-tools input:focus,.list-tools select:focus{outline:2px solid var(--green); outline-offset:0; border-color:var(--green)}
 @media(max-width:640px){.list-tools select{max-width:none; width:100%}}
+.no-results{
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  margin:24px 0 0; padding:18px;
+  border:1px dashed var(--line-strong); border-radius:var(--radius);
+  color:var(--muted); font-size:15px;
+}
+.no-results span{max-width:52ch}
+.filter-clear{
+  min-height:44px; padding:8px 14px;
+  border:1px solid var(--line-strong); border-radius:var(--radius);
+  background:transparent; color:var(--green); cursor:pointer;
+  font:600 13px/1 var(--body);
+}
+.filter-clear:hover{border-color:var(--green); background:var(--green-soft)}
