@@ -80,8 +80,8 @@ nommées dans la question quand elle en cite 3 ou moins), 10 questions par jour.
 Le quota de 10 questions ne compte que si un LLM est configuré : sans LLM,
 chaque message renvoie directement la liste filtrée, sans consommation.
 
-Le résumé quotidien part tout seul une fois par jour, après `digest_hour`
-(18 h par défaut, colonne `users.digest_hour` en base) : 5 items les plus
+Le résumé quotidien part tout seul une fois par jour, à partir de `DIGEST_HOUR`
+(18 h par défaut, heure locale du serveur) : 5 items les plus
 urgents, les devoirs du jour, et la numérotation annoncée par `/fait N`.
 Une donnée de plus de 12 h déclenche une relecture PRONOTE avant l'envoi.
 
@@ -133,6 +133,7 @@ cookie ne sert que de repli quand aucun en-tête n'est présent.
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
 | `LLM_MESSAGES` | `1` | `0` = le corps des messages de profs ne sort jamais du serveur |
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
+| `DIGEST_HOUR` | `18` | heure locale (0-23) à partir de laquelle le résumé quotidien part ; hors bornes → refus de démarrer |
 | `DATA_DIR` | `data` | `app.db`, `locks/` |
 
 ## Ce que Blocus ne fait jamais
@@ -158,8 +159,9 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
   processus qui pointent le même `DATA_DIR` se marchent dessus sur SQLite.
 - **Fenêtre de rattrapage figée** : `WINDOW_START` n'est relu qu'au démarrage ;
   changer la variable demande un `systemctl restart`.
-- **`digest_hour` n'est pas exposed** : c'est une colonne SQLite, à modifier
-  en base si besoin.
+- **`DIGEST_HOUR` figé au démarrage** : la boucle de résumé lit la valeur une
+  fois ; la changer demande un `systemctl restart`. La colonne
+  `users.digest_hour` reste en base mais n'est plus lue.
 
 ## Déploiement du bot (option)
 
@@ -239,6 +241,7 @@ jetons PRONOTE sont chiffrés avec `APP_SECRET`, inchangé entre deux versions.
 | service redémarre en boucle (`Restart=on-failure`) | token refusé par Telegram → voir `journalctl` |
 | `Read-only file system` | `DATA_DIR` ne correspond pas à `ReadWritePaths` |
 | `WINDOW_START invalide` | date mal formée dans l'env : le bot refuse de démarrer |
+| `DIGEST_HOUR invalide` | heure hors 0-23 ou non entière dans l'env : le bot refuse de démarrer |
 | `Ta connexion PRONOTE a expiré` | jeton révoilé : seul un `/start` avec un QR neuf répare le compte |
 | `PRONOTE nous ralentit…` | 429/403 : pause de 3 s, un seul nouvel essai, puis abandon |
 | `PIN requis` | compte PRONOTE protégé par un code : le bot le demande, sinon passe par `/mdp` |

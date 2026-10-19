@@ -13,6 +13,7 @@ import io
 import json
 import re
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -179,6 +180,9 @@ def cfg(secret, tmp_path) -> config.Config:
             "APP_SECRET": secret,
             "DATA_DIR": str(tmp_path / "data"),
             "WINDOW_START": "2026-10-01",
+            # Le résumé part dès 0 h : les tests ne dépendent pas de l'heure
+            # à laquelle la suite tourne.
+            "DIGEST_HOUR": "0",
             "ADMIN_CHAT_ID": "999999",
             "LLM_BASE_URL": "http://127.0.0.1:9/v1",
             "LLM_API_KEY": "cle-de-test",
@@ -1187,11 +1191,6 @@ def test_digest_envoie_le_resume_une_fois_par_jour(
     db.replace_items(
         conn, user_id, [devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=2))]
     )
-    with conn:
-        conn.execute(
-            "UPDATE users SET digest_hour = 0, digest_day = NULL WHERE id = ?",
-            (user_id,),
-        )
 
     async def scenario(rig):
         await _digest_pass(rig.app, conn, cfg)
@@ -1202,6 +1201,44 @@ def test_digest_envoie_le_resume_une_fois_par_jour(
         before = len(texts)
         await _digest_pass(rig.app, conn, cfg)
         assert len(rig.fake.texts(CHAT)) == before
+
+    run_flow(cfg, conn, scenario)
+
+def test_digest_avant_l_heure_ne_part_pas(
+    cfg, conn, pronote, llm_fake, make_user, monkeypatch
+):
+    """`cfg.digest_hour` est la seule horloge du résumé.
+
+    Heure figée à 10 h et seuil à 23 h : sans le garde-fou, le résumé partirait
+    tout de suite. L'horloge est simulée pour que le test ne dépende pas de
+    l'heure à laquelle la suite tourne.
+    """
+    user_id = make_user(chat_id=CHAT)
+    db.replace_items(
+        conn, user_id, [devoir("SVT", "Schéma à légender.", TODAY - timedelta(days=2))]
+    )
+    # La colonne héritée dit 0 h : si elle reprenait la main, le résumé
+    # partirait à 10 h et le test échouerait.
+    with conn:
+        conn.execute("UPDATE users SET digest_hour = 0 WHERE id = ?", (user_id,))
+    monkeypatch.setattr(bot_main, "datetime", SimpleNamespace(now=lambda: datetime(
+        2026, 10, 20, 10, 0
+    )))
+
+    async def scenario(rig):
+        await _digest_pass(rig.app, conn, replace(cfg, digest_hour=23))
+        assert not any("Résumé du jour" in t for t in rig.fake.texts(CHAT))
+        assert db.get_user(conn, user_id)["digest_day"] is None
+
+        # Seuil atteint : le même passage, une heure plus tard, envoie bien.
+        # `_digest_pass` date la journée avec `config.today()` (horloge réelle,
+        # non simulée ici) : on asserte cette valeur, pas une date en dur.
+        monkeypatch.setattr(bot_main, "datetime", SimpleNamespace(now=lambda: datetime(
+            2026, 10, 20, 23, 0
+        )))
+        await _digest_pass(rig.app, conn, replace(cfg, digest_hour=23))
+        assert any("Résumé du jour" in t for t in rig.fake.texts(CHAT))
+        assert db.get_user(conn, user_id)["digest_day"] == config.today().isoformat()
 
     run_flow(cfg, conn, scenario)
 
@@ -1310,11 +1347,6 @@ def test_digest_jeton_invalide_demande_un_qr(
     cfg, conn, pronote, llm_fake, make_user, monkeypatch
 ):
     user_id = make_user(chat_id=CHAT)
-    with conn:
-        conn.execute(
-            "UPDATE users SET digest_hour = 0, digest_day = NULL WHERE id = ?",
-            (user_id,),
-        )
 
     def sync_refuse(conn_, user_id_, cfg_, phase="items"):  # noqa: ANN001
         db.set_last_error(conn_, user_id_, fetch.ERR_TOKEN)

@@ -27,6 +27,7 @@ class Config:
     app_secret: str
     admin_chat_id: int | None
     window_start: str
+    digest_hour: int
     default_pronote_url: str
     mobile_query: str
     llm_base_url: str
@@ -126,6 +127,18 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
         date.fromisoformat(window_start)
     except ValueError as exc:
         raise RuntimeError(f"WINDOW_START invalide (AAAA-MM-JJ attendu) : {window_start!r}") from exc
+    # Heure locale à partir de laquelle le résumé quotidien part (0-23).
+    # Valide tôt : une valeur hors bornes doit casser au démarrage, sinon la
+    # boucle de résumé ne se déclenche jamais (ou à n'importe quelle heure).
+    digest_hour = get("DIGEST_HOUR") or "18"
+    try:
+        digest_hour_value = int(digest_hour)
+        if not 0 <= digest_hour_value <= 23:
+            raise ValueError
+    except ValueError as exc:
+        raise RuntimeError(
+            f"DIGEST_HOUR invalide (entier 0-23 attendu) : {digest_hour!r}"
+        ) from exc
     try:
         concurrency = max(1, int(get("MAX_CONCURRENT_SYNCS", "4")))
     except ValueError:
@@ -135,6 +148,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
         app_secret=secret,
         admin_chat_id=_int_or_none(get("ADMIN_CHAT_ID")),
         window_start=window_start,
+        digest_hour=digest_hour_value,
         default_pronote_url=get("DEFAULT_PRONOTE_URL", DEFAULT_PRONOTE_URL),
         mobile_query=get("PRONOTE_MOBILE_QUERY", DEFAULT_MOBILE_QUERY),
         llm_base_url=get("LLM_BASE_URL").rstrip("/"),

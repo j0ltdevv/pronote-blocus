@@ -1150,7 +1150,9 @@ async def _digest_pass(application: Application, conn, cfg: config.Config) -> No
         try:
             if user["digest_day"] == today:
                 continue
-            if datetime.now().hour < int(user["digest_hour"]):
+            # Heure du résumé : DIGEST_HOUR (config), et non plus la colonne
+            # users.digest_hour — une seule source, réglable sans sqlite3.
+            if datetime.now().hour < cfg.digest_hour:
                 continue
             if _stale(user["last_sync_at"], hours=12):
                 result = await asyncio.to_thread(
