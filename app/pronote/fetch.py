@@ -19,6 +19,7 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -31,6 +32,8 @@ from ..config import Config
 from ..config import today as _today
 from . import auth
 from .normalize import Item, RawBundle, build_items, clean_text, lesson_slot
+
+log = logging.getLogger(__name__)
 
 PHASE_ITEMS = "items"
 PHASE_COURS = "cours"
@@ -206,9 +209,31 @@ def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 # ─────────────────────────── helpers PRONOTE ───────────────────────────
 
 
+def _window_start(cfg: Config) -> date:
+    """Début de fenêtre courant : `WINDOW_START` relu à chaque synchro.
+
+    La valeur validée au démarrage (`cfg.window_start`) n'est qu'un repli :
+    si la variable change pendant que le process tourne, le cycle suivant
+    l'applique sans redémarrer. Une valeur invalide à chaud est ignorée
+    (log + repli) plutôt que de faire échouer la synchro.
+    """
+    raw = (os.environ.get("WINDOW_START") or "").strip()
+    if not raw:
+        return cfg.window_start_date()
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        log.warning(
+            "WINDOW_START invalide en cours de route %r : repli sur %s",
+            raw,
+            cfg.window_start,
+        )
+        return cfg.window_start_date()
+
+
 def _window(cfg: Config) -> tuple[date, date, date]:
     today = _today()
-    return cfg.window_start_date(), today, today + timedelta(days=FORWARD_DAYS)
+    return _window_start(cfg), today, today + timedelta(days=FORWARD_DAYS)
 
 
 def class_name_of(client: Any) -> str | None:
