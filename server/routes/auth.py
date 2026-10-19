@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import secrets
 import time
 from typing import Any
@@ -43,8 +44,7 @@ from ..deps import (
     rotate_sessions,
     sessions,
 )
-
-
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
@@ -387,7 +387,11 @@ def post_pin(
         record_login_failure(cle_limite)
         raise HTTPException(401, exc.message) from exc
     except Exception as exc:
-        raise HTTPException(502, f"Connexion PRONOTE impossible : {exc}") from exc
+        # On ne relaye jamais le texte de l'exception : une dépendance
+        # pourrait y embarquer un secret (jeton, mot de passe). Seul le
+        # type est journalisé, et l'élève reçoit un message générique.
+        log.warning("connexion PIN refusée (%s)", type(exc).__name__)
+        raise HTTPException(502, "Connexion PRONOTE impossible.") from exc
 
     if getattr(client, "logged_in", True) is False:
         record_login_failure(cle_limite)
