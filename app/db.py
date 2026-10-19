@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     last_sync_at TEXT,
     last_error TEXT,
+    last_error_at TEXT,
     sync_state TEXT NOT NULL DEFAULT 'idle',
     allow_password INTEGER NOT NULL DEFAULT 0,
     include_messages INTEGER NOT NULL DEFAULT 1,
@@ -262,6 +263,7 @@ _USERS_COLUMNS: list[tuple[str, str, str | None]] = [
     ("created_at", "TEXT NOT NULL", None),
     ("last_sync_at", "TEXT", None),
     ("last_error", "TEXT", None),
+    ("last_error_at", "TEXT", None),
     ("sync_state", "TEXT NOT NULL DEFAULT 'idle'", None),
     ("allow_password", "INTEGER NOT NULL DEFAULT 0", None),
     ("include_messages", "INTEGER NOT NULL DEFAULT 1", None),
@@ -417,6 +419,7 @@ def reauth_user(
         "token_enc = ?",
         "app_uuid = ?",
         "last_error = NULL",
+        "last_error_at = NULL",
         "sync_state = 'idle'",
     ]
     values: list[object] = [
@@ -463,14 +466,20 @@ def set_sync_state(conn: sqlite3.Connection, user_id: str, state: str) -> None:
 def set_last_error(
     conn: sqlite3.Connection, user_id: str, error: str | None
 ) -> None:
+    """Range l'erreur ET son horodatage : `last_error` seul ne dit pas
+    laquelle est la plus récente quand plusieurs comptes échouent."""
     with conn:
-        conn.execute("UPDATE users SET last_error = ? WHERE id = ?", (error, user_id))
+        conn.execute(
+            "UPDATE users SET last_error = ?, last_error_at = ? WHERE id = ?",
+            (error, now_iso() if error else None, user_id),
+        )
 
 
 def mark_synced(conn: sqlite3.Connection, user_id: str) -> None:
     with conn:
         conn.execute(
-            "UPDATE users SET last_sync_at = ?, last_error = NULL WHERE id = ?",
+            "UPDATE users SET last_sync_at = ?, last_error = NULL,"
+            " last_error_at = NULL WHERE id = ?",
             (now_iso(), user_id),
         )
 

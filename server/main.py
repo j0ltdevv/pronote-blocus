@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from . import deps
-from .routes import auth, chat, items
+from .routes import auth, chat, items, status
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 DEFAULT_WEB_ORIGIN = "http://localhost:8000"
@@ -57,6 +57,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(items.router)
 app.include_router(chat.router)
+app.include_router(status.router)
 
 @app.get("/health")
 def health():
