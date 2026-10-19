@@ -12,8 +12,12 @@ let csrfSerial = 0;  // ignore une réponse de /csrf devenue obsolète
 let sessionId = null;
 let items = [];
 let filter = "all";
-let search = "";
-let subject = "";
+// Recherche et matière survivent au rechargement de l'onglet (sessionStorage),
+// jamais à une déconnexion.
+const SEARCH_KEY = "pronote_search";
+const SUBJECT_KEY = "pronote_subject";
+let search = sessionStorage.getItem(SEARCH_KEY) || "";
+let subject = sessionStorage.getItem(SUBJECT_KEY) || "";
 
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -29,6 +33,24 @@ function show(...ids) {
 }
 function hide(...ids) {
   for (const id of ids) $(id).classList.add("hidden");
+}
+
+/** Mémorise les filtres actifs pour l'onglet (pas pour l'appareil). */
+function rememberFilters() {
+  if (search) sessionStorage.setItem(SEARCH_KEY, search);
+  else sessionStorage.removeItem(SEARCH_KEY);
+  if (subject) sessionStorage.setItem(SUBJECT_KEY, subject);
+  else sessionStorage.removeItem(SUBJECT_KEY);
+}
+
+/** Remet la liste complète sans toucher aux données serveur. */
+function resetFilters() {
+  search = "";
+  subject = "";
+  rememberFilters();
+  $("searchInput").value = "";
+  const select = $("subjectSelect");
+  if (select) select.value = "";
 }
 
 function escapeHtml(s) {
@@ -81,9 +103,11 @@ function relativeLabel(diff) {
 }
 function fold(s) {
   return String(s || "")
+    .toLowerCase()
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
     .trim();
 }
 
@@ -149,6 +173,7 @@ function signOut() {
   document.body.classList.add("is-guest");
   sessionId = null;
   items = [];
+  resetFilters();
   sessionStorage.removeItem("pronote_token");
   $("qrStatus").textContent = "";
   $("pinStatus").textContent = "";
@@ -232,12 +257,33 @@ function updateCounts({ late, soon, done, all }) {
 }
 
 function render() {
+  // Valider la matière restaurée AVANT de filtrer : sinon une matière
+  // disparue viderait les listes alors que le select affiche « Toutes ».
+  const subjects = [...new Set(items.map((it) => it.subject).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "fr"));
+  if (subject && !subjects.includes(subject)) {
+    subject = "";
+    rememberFilters();
+  }
+  const select = $("subjectSelect");
+  if (select) {
+    const signature = subjects.join("|");
+    if (select.dataset.signature !== signature) {
+      select.dataset.signature = signature;
+      select.innerHTML = `<option value="">Toutes les matières</option>` +
+        subjects.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    }
+    select.value = subject;
+  }
+
   const today = startOfToday();
   const late = [], soon = [], done = [];
   const needle = fold(search);
+  let matched = 0;
   for (const it of items) {
     if (subject && it.subject !== subject) continue;
     if (needle && !fold(`${it.title} ${it.subject}`).includes(needle)) continue;
+    matched++;
     const day = parseDay(it.due);
     if (it.done) done.push(it);
     else if (day && day < today) late.push(it);
@@ -258,19 +304,6 @@ function render() {
   $("summaryMeta").textContent = meta.join(" · ") || "Rien à signaler.";
   $("profileMeta").textContent = `${items.length} ${plural(items.length, "devoir", "devoirs")} suivis`;
 
-  const select = $("subjectSelect");
-  if (select) {
-    const subjects = [...new Set(items.map((it) => it.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
-    const signature = subjects.join("|");
-    if (select.dataset.signature !== signature) {
-      select.dataset.signature = signature;
-      select.innerHTML = `<option value="">Toutes les matières</option>` +
-        subjects.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
-      select.value = subjects.includes(subject) ? subject : "";
-      if (!subjects.includes(subject)) subject = "";
-    }
-  }
-
   const fill = (name, list) => {
     $(name + "Section").classList.toggle("hidden", list.length === 0 || (filter !== "all" && filter !== name));
     $(name + "Count").textContent = list.length ? String(list.length) : "";
@@ -279,6 +312,17 @@ function render() {
   fill("late", late);
   fill("soon", soon);
   fill("done", done);
+
+  const filtered = Boolean(needle || subject);
+  const noResults = filtered && matched === 0 && items.length > 0;
+  $("noResults").classList.toggle("hidden", !noResults);
+  if (noResults) {
+    $("noResultsText").textContent = needle && subject
+      ? "Aucun devoir ne correspond à cette recherche et à cette matière."
+      : subject
+        ? "Aucun devoir dans cette matière."
+        : "Aucun devoir ne correspond à cette recherche.";
+  }
 
   if (items.length === 0) {
     hide("homework");
@@ -799,11 +843,20 @@ if ("serviceWorker" in navigator) {
 }
 
 // ── Recherche et filtre par matière ───────────────────────────────────
+// Tout se fait sur `items` en mémoire : aucune requête par frappe.
+$("searchInput").value = search;
 $("searchInput").addEventListener("input", (e) => {
   search = e.target.value;
+  rememberFilters();
   render();
 });
 $("subjectSelect").addEventListener("change", (e) => {
   subject = e.target.value;
+  rememberFilters();
   render();
+});
+$("clearFilters").addEventListener("click", () => {
+  resetFilters();
+  render();
+  $("searchInput").focus();
 });
