@@ -136,6 +136,9 @@ def client(tmp_path, monkeypatch):
     # Import paresseux : `server.main` ouvre config + base au chargement.
     main = importlib.import_module("server.main")
     with TestClient(main.app) as test_client:
+        # Jeton CSRF de pré-connexion : les routes d'écriture l'exigent.
+        jeton = test_client.get("/api/auth/csrf").json()["csrf_token"]
+        test_client.headers.update({"X-CSRF-Token": jeton, "Origin": "http://testserver"})
         yield test_client
 
     conn = deps._conn
@@ -151,6 +154,10 @@ def test_parcours_web_aucun_secret_dans_logs_ni_reponses(
     reponses = []
 
     def appel(methode: str, path: str, **kwargs):  # noqa: ANN001
+        if methode != "get":
+            # Le jeton CSRF est lié à la session : on le redemande avant
+            # chaque écriture, comme le frontend.
+            client.headers["X-CSRF-Token"] = client.get("/api/auth/csrf").json()["csrf_token"]
         reponse = getattr(client, methode)(path, **kwargs)
         reponses.append(reponse)
         return reponse
