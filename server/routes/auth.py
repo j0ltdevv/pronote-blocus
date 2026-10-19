@@ -20,7 +20,7 @@ import json
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app import crypto, db
@@ -33,13 +33,23 @@ from ..deps import (
     CfgDep,
     DBDep,
     UserDep,
+    clear_csrf_cookie,
+    csrf_token,
     issue_token,
+    presented_token,
+    require_csrf,
+    resolve_token,
     revoke_token,
     sessions,
+    set_csrf_cookie,
 )
 
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["auth"],
+    dependencies=[Depends(require_csrf)],
+)
 
 
 # ── models ─────────────────────────────────────────────────────────────
@@ -84,6 +94,7 @@ class PinOut(BaseModel):
     user_id: str
     token: str
     subjects: list[str]
+    csrf_token: str
 
 
 # ── helpers ────────────────────────────────────────────────────────────
@@ -302,6 +313,8 @@ def post_password(
     fetch.collect(client, conn, user_id, cfg, "items")
     subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
     token = issue_token(user_id, conn)
+    csrf = csrf_token(token)
+    set_csrf_cookie(response, request, csrf)
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -314,7 +327,9 @@ def post_password(
         ),
         path="/",
     )
-    return PinOut(user_id=user_id, token=token, subjects=subjects)
+    return PinOut(
+        user_id=user_id, token=token, subjects=subjects, csrf_token=csrf
+    )
 
 
 # ── 3. PIN ─────────────────────────────────────────────────────────────
@@ -372,6 +387,8 @@ def post_pin(
 
     subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
     token = issue_token(user_id, conn)
+    csrf = csrf_token(token)
+    set_csrf_cookie(response, request, csrf)
     # Cookie httpOnly : le navigateur se reconnecte seul pendant 90 jours,
     # y compris après un redémarrage du serveur. `secure` est posé quand la
     # requête arrive en HTTPS (l'instance LAN en HTTP simple ne le permet pas).
@@ -387,7 +404,29 @@ def post_pin(
         ),
         path="/",
     )
-    return PinOut(user_id=user_id, token=token, subjects=subjects)
+    return PinOut(
+        user_id=user_id, token=token, subjects=subjects, csrf_token=csrf
+    )
+
+
+# ── 2 ter. jeton CSRF ──────────────────────────────────────────────────
+
+
+@router.get("/csrf")
+def get_csrf(request: Request, response: Response, conn: DBDep) -> dict[str, str]:
+    """Rend le jeton à joindre aux écritures (`X-CSRF-Token` ou champ caché).
+
+    Avec une session valide, le jeton est lié à celle-ci et stable. Avant
+    connexion, il est aléatoire et doublé dans un cookie `SameSite=Lax` :
+    un site tiers ne peut ni le lire ni l'attacher à sa propre requête.
+    """
+    jeton = presented_token(request)
+    if jeton and resolve_token(jeton, conn):
+        csrf = csrf_token(jeton)
+    else:
+        csrf = secrets.token_urlsafe(32)
+    set_csrf_cookie(response, request, csrf)
+    return {"csrf_token": csrf}
 
 
 # ── 3. déconnexion ─────────────────────────────────────────────────────
@@ -402,5 +441,6 @@ def post_logout(user: UserDep, response: Response, conn: DBDep) -> dict[str, Any
     """
     revoke_token(user.token, conn)
     response.delete_cookie(COOKIE_NAME, path="/")
+    clear_csrf_cookie(response)
     db.delete_user(conn, user.user_id)
     return {"ok": True}

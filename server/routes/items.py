@@ -7,16 +7,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app import db, llm
 from app.config import Config, today as _today
 from app.pronote import fetch, ranking
 
-from ..deps import CfgDep, DBDep, UserDep
+from ..deps import CfgDep, DBDep, UserDep, require_csrf
 
-router = APIRouter(prefix="/api/items", tags=["items"])
+router = APIRouter(
+    prefix="/api/items",
+    tags=["items"],
+    dependencies=[Depends(require_csrf)],
+)
 
 
 # ── models ─────────────────────────────────────────────────────────────

@@ -6,6 +6,9 @@
 const API = "";  // same origin
 let token = sessionStorage.getItem("pronote_token") || null;
 sessionStorage.removeItem("pronote_user_id");  // clé de la version sans jeton
+/** Jeton CSRF de la session courante, joint à chaque écriture. */
+let csrfToken = null;
+let csrfSerial = 0;  // ignore une réponse de /csrf devenue obsolète
 let sessionId = null;
 let items = [];
 let filter = "all";
@@ -79,14 +82,44 @@ function plural(n, one, many) {
 }
 
 // ── API calls ─────────────────────────────────────────────────────────
-async function api(path, opts = {}) {
+/** (Re)demande le jeton CSRF : lié à la session si le cookie existe déjà. */
+async function refreshCsrf() {
+  const serial = ++csrfSerial;
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(API + "/api/auth/csrf", { headers });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const value = data.csrf_token || null;
+  if (serial === csrfSerial) csrfToken = value;
+  return value;
+}
+
+/** Adopte le jeton rendu par le login et invalide les rafraîchissements en vol. */
+function setCsrf(value) {
+  csrfSerial++;
+  csrfToken = value || null;
+}
+
+async function api(path, opts = {}, retried = false) {
   const authed = Boolean(token);
+  const method = (opts.method || "GET").toUpperCase();
+  const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method);
   const headers = { ...(opts.headers || {}) };
   if (opts.body) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (unsafe && csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
   const res = await fetch(API + path, { ...opts, headers });
 
+  if (res.status === 403 && unsafe && !retried) {
+    // Jeton CSRF périmé ou absent (session rechargée) : on le renouvelle
+    // une fois, puis on rejoue la requête avec le même corps.
+    const err = await res.json().catch(() => ({}));
+    if (String(err.detail || "").includes("CSRF") && (await refreshCsrf())) {
+      return api(path, opts, true);
+    }
+    throw new Error(err.detail || res.statusText);
+  }
   if (res.status === 401 && authed) {
     // Jeton expiré ou révoqué : on repart de l'écran de connexion.
     signOut();
@@ -102,6 +135,7 @@ async function api(path, opts = {}) {
 /** Oublie la session locale et rend la main à l'écran de connexion. */
 function signOut() {
   token = null;
+  csrfToken = null;
   document.body.classList.add("is-guest");
   sessionId = null;
   items = [];
@@ -117,6 +151,9 @@ function signOut() {
   $("profileMeta").textContent = "PRONOTE";
   $("syncLabel").textContent = "Pas encore synchronisé";
   updateCounts({ late: 0, soon: 0, done: 0, all: 0 });
+  // Le cookie CSRF vient d'être effacé côté serveur : on reprend un jeton
+  // de pré-connexion pour le prochain formulaire.
+  refreshCsrf().catch(() => {});
 }
 
 /** Révoque la session côté serveur puis nettoie le client. */
@@ -434,6 +471,7 @@ $("pwdForm").addEventListener("submit", async (e) => {
       body: JSON.stringify({ pronote_url: url, username, password, ent }),
     });
     token = data.token;
+    setCsrf(data.csrf_token);
     sessionStorage.setItem("pronote_token", token);
     $("pwdPass").value = "";
     document.body.classList.remove("is-guest");
@@ -469,6 +507,7 @@ $("pinForm").addEventListener("submit", async (e) => {
       body: JSON.stringify({ session_id: sessionId, pin }),
     });
     token = data.token;
+    setCsrf(data.csrf_token);
     sessionStorage.setItem("pronote_token", token);
     document.body.classList.remove("is-guest");
     hide("authPin");
@@ -557,6 +596,7 @@ sidebar.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) se
 // ── Init ──────────────────────────────────────────────────────────────
 async function init() {
   loadEnts();
+  refreshCsrf().catch(() => {});
   document.body.classList.toggle("is-guest", !token);
   if (token) {
     await loadItems();

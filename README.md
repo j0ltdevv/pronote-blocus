@@ -118,6 +118,23 @@ redémarrage du serveur. Le QR — ou les identifiants — ne servent donc qu'un
 fois par trimestre. `Authorization: Bearer` reste prioritaire sur le cookie ; le
 cookie ne sert que de repli quand aucun en-tête n'est présent.
 
+### Protection CSRF
+
+Le cookie `httpOnly` authentifie aussi les écritures (`/api/chat`,
+`/api/items/done`, `/refresh`, `/logout`). Pour qu'une page tierce ne puisse pas
+les déclencher à l'insu de l'élève, chaque `POST` doit présenter un jeton
+**lié à la session**, en en-tête `X-CSRF-Token` ou dans le champ de formulaire
+`csrf_token`. Un `POST` sans jeton — ou avec celui d'une autre session — reçoit
+un **403** explicite.
+
+Le frontend demande ce jeton à `GET /api/auth/csrf` au chargement ; `/pin` et
+`/password` le rendent aussi dans `csrf_token` et le doublent dans un cookie
+`blocus_csrf` (`SameSite=Lax`). Avant connexion, ce même endpoint fournit un
+jeton de pré-connexion : un navigateur, qui envoie `Origin`, doit le présenter
+pour appeler `/api/auth/qr`, `/password` ou `/pin`. Un client qui utilise
+`Authorization: Bearer` n'a pas besoin de jeton CSRF : cet en-tête n'est jamais
+attaché par le navigateur à une requête venue d'un autre site.
+
 ## Configuration (environnement, web et bot)
 
 | Variable | Défaut | Rôle |
