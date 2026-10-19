@@ -6,9 +6,16 @@ import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_PRONOTE_URL = "https://0332722e.index-education.net/pronote/eleve.html"
 DEFAULT_MOBILE_QUERY = "?fd=1&bydlg=A6ABB224-12DD-4E31-AD3E-8A39A1C2C335&login=true"
+
+#: Telegram identifie les fils par un entier signé 64 bits.
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+#: Plafond de `MAX_CONCURRENT_SYNCS` : au-delà, c'est une faute de frappe.
+MAX_SYNCS_CEILING = 64
 
 MOIS_FR = {
     "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5,
@@ -64,12 +71,51 @@ def _int_or_none(value: str | None) -> int | None:
     if value is None or not value.strip():
         return None
     try:
-        return int(value.strip())
+        nombre = int(value.strip())
     except ValueError as exc:
         raise RuntimeError(f"ADMIN_CHAT_ID invalide (entier attendu) : {value!r}") from exc
+    if not INT64_MIN <= nombre <= INT64_MAX:
+        raise RuntimeError(
+            f"ADMIN_CHAT_ID invalide (entier 64 bits attendu) : {value!r}"
+        )
+    return nombre
+
+
+def _check_url_port(label: str, url: str) -> None:
+    """Refuse un port non numérique ou hors 1..65535.
+
+    Une chaîne sans schéma ni hôte (ex. « pas une url ») reste transmise telle
+    quelle : `from_env` ne valide pas les URL complètes, seulement le port
+    lorsqu'il y en a un.
+    """
+    if not url:
+        return
+    try:
+        parts = urlsplit(url)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} invalide (URL illisible) : {url!r}") from exc
+    if not parts.netloc:
+        return
+    try:
+        port = parts.port
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{label} invalide (port hors 1..65535) : {url!r}"
+        ) from exc
+    if port is not None and port == 0:
+        raise RuntimeError(f"{label} invalide (port hors 1..65535) : {url!r}")
 
 
 def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -> Config:
+    """Construit la config ; les cas limites échouent tôt ou retombent sur un défaut.
+
+    - variable absente, vide ou blanche et défaut documenté → défaut, sauf
+      `LLM_MESSAGES` où une valeur blanche désactive les messages ;
+    - `MAX_CONCURRENT_SYNCS` ramené dans 1..64, non entier → 4 ;
+    - `ADMIN_CHAT_ID` hors 64 bits → erreur ;
+    - URL dont le port sort de 1..65535 → erreur ;
+    - `DATA_DIR` relatif conservé tel quel (résolu depuis le répertoire courant).
+    """
     e = dict(os.environ if env is None else env)
 
     def get(key: str, default: str = "") -> str:
@@ -85,7 +131,13 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             '"from cryptography.fernet import Fernet; '
             'print(Fernet.generate_key().decode())"'
         )
-    data_dir = Path(get("DATA_DIR", "data")).expanduser()
+    data_dir_raw = get("DATA_DIR") or "data"
+    try:
+        data_dir = Path(data_dir_raw).expanduser()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"DATA_DIR invalide (utilisateur inconnu) : {data_dir_raw!r}"
+        ) from exc
     # Mode web (require_token=False) : on tolère l'absence d'APP_SECRET et
     # on le génère à la volée pour que `uvicorn server.main:app` marche
     # sans rien configurer. La clé est persistée dans DATA_DIR/app_secret
@@ -120,7 +172,7 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             Fernet(secret.encode() if isinstance(secret, str) else secret)
         except Exception as exc:
             raise RuntimeError(f"APP_SECRET invalide (clé Fernet attendue) : {exc}") from exc
-    window_start = get("WINDOW_START", "2026-10-01")
+    window_start = get("WINDOW_START") or "2026-10-01"
     # Valide tôt : une date mal formée doit casser au démarrage, pas à la
     # première synchro d'un élève.
     try:
@@ -140,24 +192,31 @@ def from_env(env: dict[str, str] | None = None, *, require_token: bool = True) -
             f"DIGEST_HOUR invalide (entier 0-23 attendu) : {digest_hour!r}"
         ) from exc
     try:
-        concurrency = max(1, int(get("MAX_CONCURRENT_SYNCS", "4")))
+        concurrency = int(get("MAX_CONCURRENT_SYNCS") or "4")
     except ValueError:
         concurrency = 4
+    concurrency = min(MAX_SYNCS_CEILING, max(1, concurrency))
+    default_pronote_url = get("DEFAULT_PRONOTE_URL") or DEFAULT_PRONOTE_URL
+    _check_url_port("DEFAULT_PRONOTE_URL", default_pronote_url)
+    llm_base_url = get("LLM_BASE_URL").rstrip("/")
+    _check_url_port("LLM_BASE_URL", llm_base_url)
     return Config(
         telegram_token=token,
         app_secret=secret,
         admin_chat_id=_int_or_none(get("ADMIN_CHAT_ID")),
         window_start=window_start,
         digest_hour=digest_hour_value,
-        default_pronote_url=get("DEFAULT_PRONOTE_URL", DEFAULT_PRONOTE_URL),
-        mobile_query=get("PRONOTE_MOBILE_QUERY", DEFAULT_MOBILE_QUERY),
-        llm_base_url=get("LLM_BASE_URL").rstrip("/"),
+        default_pronote_url=default_pronote_url,
+        mobile_query=get("PRONOTE_MOBILE_QUERY") or DEFAULT_MOBILE_QUERY,
+        llm_base_url=llm_base_url,
         llm_api_key=get("LLM_API_KEY"),
         llm_model=get("LLM_MODEL"),
         llm_messages=get("LLM_MESSAGES", "1").lower() not in ("0", "false", "no", ""),
         max_concurrent_syncs=concurrency,
-        allow_password_login=get("ALLOW_PASSWORD_LOGIN", "1") not in ("0", "false", "no"),
-        password_ent=get("PASSWORD_ENT", "lyceeconnecte_aquitaine"),
+        allow_password_login=(
+            get("ALLOW_PASSWORD_LOGIN", "1").lower() not in ("0", "false", "no")
+        ),
+        password_ent=get("PASSWORD_ENT") or "lyceeconnecte_aquitaine",
         db_path=data_dir / "app.db",
         data_dir=data_dir,
     )
