@@ -27,6 +27,7 @@ from app import crypto, db
 from app.config import Config
 from app.pronote import auth, fetch
 
+from .. import ratelimit
 from ..deps import (
     COOKIE_NAME,
     TOKEN_TTL_SECONDS,
@@ -262,6 +263,9 @@ def post_password(
     contiennent le mot de passe, qui est donc **conservé chiffré** en base
     (Fernet). Il n'apparaît jamais en clair, ni en base ni dans un journal.
     """
+    ip = ratelimit.client_ip(request)
+    ratelimit.verifier(ip)
+
     if not cfg.allow_password_login:
         raise HTTPException(403, "La connexion par mot de passe est désactivée.")
 
@@ -279,10 +283,12 @@ def post_password(
             pronote_url, username, body.password, app_uuid, ent=ent
         )
     except pronotepy.MFAError as exc:
+        ratelimit.echec(ip)
         raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
     except Exception as exc:
         # Message utile selon le cas : sans ENT, l'élève doit en choisir un ;
         # avec, ce sont les identifiants qui sont en cause.
+        ratelimit.echec(ip)
         detail = (
             f"Identifiants refusés par « {body.ent or cfg.password_ent} ». "
             "Vérifie ton identifiant et ton mot de passe."
@@ -293,6 +299,7 @@ def post_password(
         raise HTTPException(401, detail) from exc
 
     if getattr(client, "logged_in", True) is False:
+        ratelimit.echec(ip)
         raise HTTPException(401, "Identifiants refusés par PRONOTE.")
 
     class_name = fetch.class_name_of(client)
@@ -330,6 +337,9 @@ def post_pin(
     cfg: CfgDep,
 ) -> PinOut:
     """Finalise la connexion avec le code à 4 chiffres, rend un jeton de 90 jours."""
+    ip = ratelimit.client_ip(request)
+    ratelimit.verifier(ip)
+
     sess = sessions().pop(body.session_id, None)
     if sess is None:
         raise HTTPException(404, "Session introuvable ou expirée.")
@@ -347,15 +357,19 @@ def post_pin(
     try:
         client, creds = auth.login_with_qr(qr, pin, app_uuid, body.account_pin)
     except pronotepy.MFAError as exc:
+        ratelimit.echec(ip)
         raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
     except pronotepy.CryptoError as exc:
+        ratelimit.echec(ip)
         raise HTTPException(401, "QR ou code invalide — régénère un QR dans PRONOTE.") from exc
     except auth.QrExpired as exc:
+        ratelimit.echec(ip)
         raise HTTPException(401, exc.message) from exc
     except Exception as exc:
         raise HTTPException(502, f"Connexion PRONOTE impossible : {exc}") from exc
 
     if getattr(client, "logged_in", True) is False:
+        ratelimit.echec(ip)
         raise HTTPException(401, "Jeton refusé — renvoie un QR frais.")
 
     class_name = fetch.class_name_of(client)
