@@ -6,6 +6,7 @@ Lancement : `uvicorn server.main:app --reload` depuis la racine du projet.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -17,9 +18,19 @@ from fastapi.staticfiles import StaticFiles
 from . import deps
 from .routes import auth, chat, items, status
 from .security import SecurityHeadersMiddleware
+from .timing import RequestTimingMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 DEFAULT_WEB_ORIGIN = "http://localhost:8000"
+
+# Uvicorn ne configure que ses propres loggers. Sans cette ligne, le `INFO` de
+# l'application (dont la latence des requêtes) serait perdu ; `WARNING` reste
+# le niveau du reste (httpx, telegram…), trop bavard en `INFO`.
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s %(levelname)s %(name)s : %(message)s",
+)
+logging.getLogger("server").setLevel(logging.INFO)
 
 
 def web_origins() -> list[str]:
@@ -57,6 +68,9 @@ app.add_middleware(
 
 # Ajouté en dernier : enveloppe aussi CORS, les erreurs et les fichiers statiques.
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Ajouté encore après : la durée inclut les en-têtes, CORS et les statiques.
+app.add_middleware(RequestTimingMiddleware)
 
 app.include_router(auth.router)
 app.include_router(items.router)
