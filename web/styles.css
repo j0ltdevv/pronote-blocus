@@ -414,3 +414,15 @@ body.is-guest .mobile-menu{display:none}
 .plan-body p{margin:0; color:var(--faint); font:500 11px/1.4 var(--mono); letter-spacing:.02em}
 .plan-row.is-done h3{color:var(--muted); text-decoration:line-through}
 .plan-replan{margin-top:28px}
+
+/* ── recherche & filtre matières ───────────────────────────────────────── */
+.list-tools{display:flex; gap:10px; margin:24px 0 0; flex-wrap:wrap}
+.list-tools input,.list-tools select{
+  min-height:44px; padding:10px 12px;
+  border:1px solid var(--line-strong); border-radius:var(--radius);
+  background:var(--surface); color:var(--text); font:400 15px/1.4 var(--body);
+}
+.list-tools input{flex:1 1 240px}
+.list-tools select{flex:0 0 auto; max-width:260px}
+.list-tools input:focus,.list-tools select:focus{outline:2px solid var(--green); outline-offset:0; border-color:var(--green)}
+@media(max-width:640px){.list-tools select{max-width:none; width:100%}}
