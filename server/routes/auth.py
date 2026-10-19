@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import secrets
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -34,7 +35,12 @@ from ..deps import (
     DBDep,
     UserDep,
     issue_token,
+    login_rate_limited,
+    new_session,
+    purge_expired_sessions,
+    record_login_failure,
     revoke_token,
+    rotate_sessions,
     sessions,
 )
 
@@ -114,6 +120,11 @@ _PLACEHOLDER_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwAE"
     "hQGAhKgYmCAAAB7AAVZ4rGy0wAAAABJRU5ErkJggg=="
 )
+
+
+def _client_ip(request: Request) -> str:
+    """Adresse du pair direct (jamais `X-Forwarded-For`, spoofable)."""
+    return request.client.host if request.client is not None else "inconnu"
 
 
 def _qr_from_url(pronote_url: str) -> dict:
@@ -206,11 +217,8 @@ def post_qr(body: QrIn) -> QrOut:
             400, "Envoie `image_base64` (capture QR) ou `pronote_url` (dev)."
         )
 
-    session_id = secrets.token_urlsafe(16)
-    sessions()[session_id] = {
-        "qr": qr,
-        "pronote_url": qr.get("url", body.pronote_url or ""),
-    }
+    purge_expired_sessions()
+    session_id = new_session(qr, qr.get("url", body.pronote_url or ""))
     return QrOut(session_id=session_id, qr_image_base64=_render_qr_png(qr))
 
 
@@ -265,6 +273,14 @@ def post_password(
     if not cfg.allow_password_login:
         raise HTTPException(403, "La connexion par mot de passe est désactivée.")
 
+    # Rate limit : clé = IP + identifiant, pour ne pas bloquer toute une
+    # famille (NAT) à cause d'un seul compte attaqué.
+    cle_limite = f"password:{_client_ip(request)}:{body.username.strip().lower()}"
+    if login_rate_limited(cle_limite):
+        raise HTTPException(
+            429, "Trop de tentatives de connexion, réessaie dans quelques minutes."
+        )
+
     username = body.username.strip()
     if not username or not body.password:
         raise HTTPException(400, "Identifiant et mot de passe requis.")
@@ -279,6 +295,7 @@ def post_password(
             pronote_url, username, body.password, app_uuid, ent=ent
         )
     except pronotepy.MFAError as exc:
+        record_login_failure(cle_limite)
         raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
     except Exception as exc:
         # Message utile selon le cas : sans ENT, l'élève doit en choisir un ;
@@ -290,9 +307,11 @@ def post_password(
             else "Connexion refusée. Choisis ton ENT dans la liste : sans lui, "
             "PRONOTE refuse le mot de passe."
         )
+        record_login_failure(cle_limite)
         raise HTTPException(401, detail) from exc
 
     if getattr(client, "logged_in", True) is False:
+        record_login_failure(cle_limite)
         raise HTTPException(401, "Identifiants refusés par PRONOTE.")
 
     class_name = fetch.class_name_of(client)
@@ -301,6 +320,8 @@ def post_password(
     )
     fetch.collect(client, conn, user_id, cfg, "items")
     subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
+    # Rotation : toute session antérieure du compte devient caduque.
+    rotate_sessions(user_id, conn)
     token = issue_token(user_id, conn)
     response.set_cookie(
         COOKIE_NAME,
@@ -330,8 +351,18 @@ def post_pin(
     cfg: CfgDep,
 ) -> PinOut:
     """Finalise la connexion avec le code à 4 chiffres, rend un jeton de 90 jours."""
+    # Rate limit par IP : le code est à 4 chiffres, donc forcable en ligne.
+    cle_limite = f"pin:{_client_ip(request)}"
+    if login_rate_limited(cle_limite):
+        raise HTTPException(
+            429, "Trop de tentatives de connexion, réessaie dans quelques minutes."
+        )
+
+    purge_expired_sessions()
     sess = sessions().pop(body.session_id, None)
     if sess is None:
+        raise HTTPException(404, "Session introuvable ou expirée.")
+    if sess.get("expires_at", float("inf")) <= time.monotonic():
         raise HTTPException(404, "Session introuvable ou expirée.")
 
     pin = body.pin.strip()
@@ -347,15 +378,19 @@ def post_pin(
     try:
         client, creds = auth.login_with_qr(qr, pin, app_uuid, body.account_pin)
     except pronotepy.MFAError as exc:
+        record_login_failure(cle_limite)
         raise HTTPException(401, "Ce compte demande un code PIN supplémentaire.") from exc
     except pronotepy.CryptoError as exc:
+        record_login_failure(cle_limite)
         raise HTTPException(401, "QR ou code invalide — régénère un QR dans PRONOTE.") from exc
     except auth.QrExpired as exc:
+        record_login_failure(cle_limite)
         raise HTTPException(401, exc.message) from exc
     except Exception as exc:
         raise HTTPException(502, f"Connexion PRONOTE impossible : {exc}") from exc
 
     if getattr(client, "logged_in", True) is False:
+        record_login_failure(cle_limite)
         raise HTTPException(401, "Jeton refusé — renvoie un QR frais.")
 
     class_name = fetch.class_name_of(client)
@@ -371,6 +406,8 @@ def post_pin(
         pass
 
     subjects: list[str] = sorted({it.subject for it in db.get_items(conn, user_id)})
+    # Rotation : toute session antérieure du compte devient caduque.
+    rotate_sessions(user_id, conn)
     token = issue_token(user_id, conn)
     # Cookie httpOnly : le navigateur se reconnecte seul pendant 90 jours,
     # y compris après un redémarrage du serveur. `secure` est posé quand la
