@@ -9,6 +9,8 @@ sessionStorage.removeItem("pronote_user_id");  // clé de la version sans jeton
 let sessionId = null;
 let items = [];
 let filter = "all";
+let search = "";
+let subject = "";
 
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -74,6 +76,14 @@ function relativeLabel(diff) {
   if (diff === -1) return "hier";
   return diff < 0 ? `il y a ${-diff} j` : `dans ${diff} j`;
 }
+function fold(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function plural(n, one, many) {
   return n > 1 ? many : one;
 }
@@ -187,7 +197,10 @@ function updateCounts({ late, soon, done, all }) {
 function render() {
   const today = startOfToday();
   const late = [], soon = [], done = [];
+  const needle = fold(search);
   for (const it of items) {
+    if (subject && it.subject !== subject) continue;
+    if (needle && !fold(`${it.title} ${it.subject}`).includes(needle)) continue;
     const day = parseDay(it.due);
     if (it.done) done.push(it);
     else if (day && day < today) late.push(it);
@@ -207,6 +220,19 @@ function render() {
   if (done.length) meta.push(`${done.length} ${plural(done.length, "fait", "faits")}`);
   $("summaryMeta").textContent = meta.join(" · ") || "Rien à signaler.";
   $("profileMeta").textContent = `${items.length} ${plural(items.length, "devoir", "devoirs")} suivis`;
+
+  const select = $("subjectSelect");
+  if (select) {
+    const subjects = [...new Set(items.map((it) => it.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+    const signature = subjects.join("|");
+    if (select.dataset.signature !== signature) {
+      select.dataset.signature = signature;
+      select.innerHTML = `<option value="">Toutes les matières</option>` +
+        subjects.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+      select.value = subjects.includes(subject) ? subject : "";
+      if (!subjects.includes(subject)) subject = "";
+    }
+  }
 
   const fill = (name, list) => {
     $(name + "Section").classList.toggle("hidden", list.length === 0 || (filter !== "all" && filter !== name));
@@ -731,3 +757,13 @@ init();
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
+
+// ── Recherche et filtre par matière ───────────────────────────────────
+$("searchInput").addEventListener("input", (e) => {
+  search = e.target.value;
+  render();
+});
+$("subjectSelect").addEventListener("change", (e) => {
+  subject = e.target.value;
+  render();
+});
