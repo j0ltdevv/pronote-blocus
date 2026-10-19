@@ -3,7 +3,8 @@
 Chaque test échoue si le comportement correspondant régresse :
 
 - le jeton Telegram ne doit PAS être exigé ;
-- une config incomplète (APP_SECRET, WINDOW_START…) doit sortir en 1 avec la cause ;
+- une config incomplète (APP_SECRET invalide, WINDOW_START…) doit sortir en 1 avec la cause ;
+- un APP_SECRET absent est généré par le mode zero-config et sort en 0 ;
 - une base absente ou un schéma incomplet doit sortir en 1 ;
 - `--doctor` ne doit construire aucune Application Telegram ;
 - sans `--doctor`, `main()` garde son comportement d'origine.
@@ -119,19 +120,19 @@ def test_doctor_with_telegram_token_reports_it_present(tmp_path, secret):
 # ─────────────────────── configuration incomplète ───────────────────────
 
 
-def test_doctor_missing_app_secret_exits_1_with_cause(tmp_path, secret):
+def test_doctor_auto_generates_app_secret_and_exits_zero(tmp_path):
     _created_db(tmp_path)
-    env = _env(tmp_path, secret)
+    env = _env(tmp_path, secret="")
     env.pop("APP_SECRET")
 
     code, lines = _run(env)
 
-    assert code == 1, lines
-    ko = _ko(lines)
-    assert len(ko) == 1, lines
-    assert "APP_SECRET" in ko[0] and "manquant" in ko[0]
-    # Le reste des vérifications reste utile : la base est quand même contrôlée.
-    assert any("schéma complet" in line for line in lines)
+    # Depuis le mode web zero-config, `from_env(require_token=False)` génère
+    # et persiste APP_SECRET : absent n'est plus une erreur.
+    assert code == 0, lines
+    assert not _ko(lines), lines
+    assert any("généré" in line for line in lines), lines
+    assert (tmp_path / "data" / "app_secret").is_file()
 
 
 def test_doctor_invalid_app_secret_exits_1_with_cause(tmp_path):
