@@ -1,0 +1,36 @@
+/* Page de statut : feuille séparée, la CSP interdit le style inline. */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  margin: 0;
+  padding: 2rem;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 1.5rem;
+}
+
+dt {
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+dd {
+  margin: 0.15rem 0 0;
+}
+
+footer {
+  margin-top: 2rem;
+  font-size: 0.9rem;
+}
