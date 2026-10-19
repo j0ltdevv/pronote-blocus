@@ -125,15 +125,24 @@ cookie ne sert que de repli quand aucun en-tête n'est présent.
 | `TELEGRAM_BOT_TOKEN` | — | obligatoire |
 | `APP_SECRET` | — | obligatoire, clé Fernet |
 | `ADMIN_CHAT_ID` | vide | `/qui`, `/mdp` |
-| `ALLOW_PASSWORD_LOGIN` | `1` | activer (`1`/`true`) ou désactiver (`0`/`false`) la connexion par mot de passe |
+| `ALLOW_PASSWORD_LOGIN` | `1` | activer (`1`/`true`) ou désactiver (`0`/`false`/`no`, insensible à la casse) la connexion par mot de passe |
 | `PASSWORD_ENT` | `lyceeconnecte_aquitaine` | ENT par défaut pour la connexion par mot de passe |
 | `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage ; elle court jusqu'à aujourd'hui + 45 jours (`FORWARD_DAYS`) |
 | `DEFAULT_PRONOTE_URL` | `https://0332722e.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
 | `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile appliqués à la reconnexion par jeton ; vide → constante par défaut |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
-| `LLM_MESSAGES` | `1` | `0` = le corps des messages de profs ne sort jamais du serveur |
-| `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
-| `DATA_DIR` | `data` | `app.db`, `locks/` |
+| `LLM_MESSAGES` | `1` | `0`/`false`/`no` (ou une valeur blanche) = le corps des messages de profs ne sort jamais du serveur ; vide = défaut |
+| `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés, borné à `1..64` ; non entier → `4` |
+| `DATA_DIR` | `data` | `app.db`, `locks/` ; chemin relatif = depuis le répertoire courant, `~` est étendu |
+
+Cas limites de `from_env` :
+
+- une variable optionnelle absente, vide ou composée d'espaces retombe sur son
+  défaut ci-dessus (sauf `LLM_MESSAGES`, voir la ligne) ;
+- `ADMIN_CHAT_ID` doit tenir sur un entier signé 64 bits, sinon refus au
+  démarrage ;
+- un port d'URL hors `1..65535` (`DEFAULT_PRONOTE_URL`, `LLM_BASE_URL`) est
+  refusé au démarrage ; une chaîne sans schéma reste transmise telle quelle.
 
 ## Ce que Blocus ne fait jamais
 
