@@ -49,7 +49,6 @@ class Config:
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.locks_dir.mkdir(parents=True, exist_ok=True)
 
     @property
