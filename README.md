@@ -155,8 +155,10 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
   être supprimé à la main.
 - **Pièces jointes jamais téléchargées** : seul le nombre de fichiers d'un
   devoir est lu et affiché (📎2), aucun binaire n'est stocké.
-- **Une seule instance** : le service ne prend pas de verrou global. Deux
-  processus qui pointent le même `DATA_DIR` se marchent dessus sur SQLite.
+- **Une seule instance par `DATA_DIR`** : `main()` prend un `flock` sur
+  `DATA_DIR/locks/instance.lock` avant d'ouvrir la base. Un second processus
+  s'arrête avec un message clair (code 2) sans toucher à `app.db`. Deux
+  instances demandent deux `DATA_DIR` distincts.
 - **Fenêtre de rattrapage figée** : `WINDOW_START` n'est relu qu'au démarrage ;
   changer la variable demande un `systemctl restart`.
 - **`DIGEST_HOUR` figé au démarrage** : la boucle de résumé lit la valeur une
