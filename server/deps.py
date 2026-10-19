@@ -11,13 +11,16 @@ Ce module porte aussi l'authentification de l'API : les jetons opaques
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 import threading
 import time
 from dataclasses import dataclass
 from typing import Annotated
+from urllib.parse import parse_qs
 
-from fastapi import Depends, Request, HTTPException
+from fastapi import Depends, Request, Response, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import config, db
@@ -72,11 +75,148 @@ CfgDep = Annotated[config.Config, Depends(get_cfg)]
 TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
 COOKIE_NAME = "blocus_session"
 
+# ── CSRF ───────────────────────────────────────────────────────────────
+#
+# Chaque écriture doit prouver qu'elle vient de la page de l'élève. Le jeton
+# attendu n'est pas stocké : il est dérivé du jeton de session (HMAC avec
+# `APP_SECRET`), donc stable entre redémarrages et impossible à deviner sans
+# le cookie de session. La copie lisible dans `blocus_csrf` sert aux pages
+# qui préfèrent lire le cookie ; la comparaison reste côté serveur.
+
+CSRF_COOKIE_NAME = "blocus_csrf"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+CSRF_FIELD_NAME = "csrf_token"
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+# Repli si `APP_SECRET` manque (tests unitaires) : les jetons ne survivent
+# alors pas à un redémarrage, ce qui n'enlève rien à la protection.
+_CSRF_FALLBACK_KEY = secrets.token_bytes(32)
+
 
 def _hash(token: str) -> str:
-    import hashlib
-
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _csrf_key() -> bytes:
+    """Clé de dérivation, stable tant que `APP_SECRET` ne change pas."""
+    try:
+        secret = get_cfg().app_secret or ""
+    except Exception:
+        secret = ""
+    return secret.encode() if secret else _CSRF_FALLBACK_KEY
+
+
+def csrf_token(session_token: str) -> str:
+    """Jeton CSRF lié à une session : un autre jeton de session en donne un autre."""
+    return hmac.new(
+        _csrf_key(), b"csrf:" + session_token.encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def _cookie_secure(request: Request) -> bool:
+    return (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+    )
+
+
+def set_csrf_cookie(response: Response, request: Request, token: str) -> None:
+    """Pose le jeton CSRF dans un cookie `SameSite=Lax`, lisible par le JS."""
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        max_age=TOKEN_TTL_SECONDS,
+        httponly=False,
+        samesite="lax",
+        secure=_cookie_secure(request),
+        path="/",
+    )
+
+
+def clear_csrf_cookie(response: Response) -> None:
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
+
+
+def _bearer_present(request: Request) -> bool:
+    """Vrai si l'en-tête `Authorization: Bearer` porte un jeton non vide."""
+    entete = request.headers.get("authorization", "")
+    prefixe = "bearer "
+    return entete.lower().startswith(prefixe) and bool(entete[len(prefixe):].strip())
+
+
+def presented_token(request: Request) -> str | None:
+    """Jeton de session présenté : en-tête prioritaire, sinon cookie httpOnly."""
+    entete = request.headers.get("authorization", "")
+    prefixe = "bearer "
+    if entete.lower().startswith(prefixe):
+        jeton = entete[len(prefixe):].strip()
+        if jeton:
+            return jeton
+    return request.cookies.get(COOKIE_NAME)
+
+
+async def _csrf_from_request(request: Request) -> str:
+    """Jeton fourni en en-tête, ou en champ caché d'un formulaire classique.
+
+    Le formulaire est décodé à la main : `request.form()` exigerait
+    `python-multipart`, absent des dépendances du projet.
+    """
+    entete = request.headers.get(CSRF_HEADER_NAME, "").strip()
+    if entete:
+        return entete
+    ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if ctype != "application/x-www-form-urlencoded":
+        return ""
+    corps = await request.body()
+    valeurs = parse_qs(corps.decode("utf-8", "replace"), keep_blank_values=False)
+    valeur = valeurs.get(CSRF_FIELD_NAME, [""])[0]
+    return valeur.strip()
+
+
+def _browser_marker(request: Request) -> bool:
+    """Un navigateur marque ses requêtes ; un client simple (curl) ne le fait pas."""
+    return bool(request.headers.get("origin") or request.headers.get("referer"))
+
+
+async def require_csrf(request: Request, conn: DBDep) -> None:
+    """Refuse (403) toute écriture sans jeton CSRF valide.
+
+    - `Authorization: Bearer` : l'en-tête n'est jamais attaché par le
+      navigateur à une requête d'un autre site, donc pas de CSRF possible.
+    - Cookie de session vivant : le jeton attendu est `csrf_token(cookie)` ;
+      il doit arriver en `X-CSRF-Token` ou dans le champ `csrf_token`.
+    - Avant connexion, ou avec un cookie mort (expiré, révoqué, base remise
+      à zéro) : un navigateur envoie `Origin` et doit présenter le jeton de
+      pré-connexion posé par `/api/auth/csrf`. Sans cette distinction, un
+      cookie périmé empêcherait de se reconnecter indéfiniment.
+    """
+    if request.method.upper() in SAFE_METHODS:
+        return
+    if _bearer_present(request):
+        return
+
+    session = request.cookies.get(COOKIE_NAME)
+    if session and resolve_token(session, conn) is not None:
+        attendu = csrf_token(session)
+        fourni = await _csrf_from_request(request)
+        if not fourni:
+            raise HTTPException(403, "Jeton CSRF manquant.")
+        # `compare_digest` sur des octets : un jeton non ASCII doit être
+        # refusé proprement, pas provoquer une TypeError (500).
+        if not hmac.compare_digest(attendu.encode(), fourni.encode("utf-8", "replace")):
+            raise HTTPException(403, "Jeton CSRF invalide.")
+        return
+
+    if not _browser_marker(request):
+        return
+    fourni = await _csrf_from_request(request)
+    if not fourni:
+        raise HTTPException(403, "Jeton CSRF manquant.")
+    prealable = request.cookies.get(CSRF_COOKIE_NAME, "")
+    if not prealable or not hmac.compare_digest(
+        prealable.encode("utf-8", "replace"), fourni.encode("utf-8", "replace")
+    ):
+        raise HTTPException(403, "Jeton CSRF invalide.")
 
 
 def issue_token(user_id: str, conn=None) -> str:
