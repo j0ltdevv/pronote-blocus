@@ -10,9 +10,10 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-
 from . import deps
 from .routes import auth, chat, items
 
@@ -33,6 +34,18 @@ def web_origins() -> list[str]:
 
 app = FastAPI(title="Pronote Blocus", version="0.1.0")
 
+
+@app.exception_handler(RequestValidationError)
+async def _validation_erreur(_request, exc):  # noqa: ANN001
+    """422 sans jamais renvoyer l'`input` reçut : un mot de passe envoyé
+    dans le corps ne doit pas revenir dans la réponse HTTP."""
+    erreurs = [
+        {"loc": erreur.get("loc"), "msg": erreur.get("msg"), "type": erreur.get("type")}
+        for erreur in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": erreurs})
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=web_origins(),
@@ -44,7 +57,6 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(items.router)
 app.include_router(chat.router)
-
 
 @app.get("/health")
 def health():

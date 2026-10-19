@@ -204,11 +204,11 @@ def _chat_locked(cfg: Config, payload: dict[str, Any], timeout: float) -> str | 
             log.warning("LLM à ralentir (%s) : pause de %.0fs", status, PAUSE_SECONDS)
             _mark_paused()
             return None
-        log.warning("appel LLM échoué : %s", exc)
+        log.warning("appel LLM échoué : %s", type(exc).__name__)
         _mark_down()
         return None
     except Exception as exc:  # timeout, connexion, JSON cassé, forme inattendue...
-        log.warning("appel LLM échoué : %s", exc)
+        log.warning("appel LLM échoué : %s", type(exc).__name__)
         # On mémorise l'échec : les clés en échec repartent dans le lot à chaque
         # affichage tant qu'on ne circuit pas. 10 minutes suffisent au redémarrage
         # d'un backend sans pénaliser l'affichage immédiat.
