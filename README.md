@@ -181,6 +181,17 @@ pour appeler `/api/auth/qr`, `/password` ou `/pin`. Un client qui utilise
 `Authorization: Bearer` n'a pas besoin de jeton CSRF : cet en-tête n'est jamais
 attaché par le navigateur à une requête venue d'un autre site.
 
+### Erreurs internes
+
+Une exception non gérée renvoie un `500` sans détail technique : du JSON
+(`{"detail": …, "incident": …}`) pour `/api/*`, une page HTML sobre pour le
+reste. L'identifiant d'incident (8 caractères) est aussi dans l'en-tête
+`X-Incident-Id`. Le serveur journalise la trace complète, mais après masquage
+des valeurs de `APP_SECRET`, `TELEGRAM_BOT_TOKEN`, `LLM_API_KEY`, des mots de
+passe/jetons/sessions, des adresses électroniques, des paramètres de requête
+et des identifiants numériques longs ; le corps, les en-têtes et les cookies
+de la requête ne sont jamais recopiés.
+
 ## Configuration (environnement, web et bot)
 
 | Variable | Défaut | Rôle |
