@@ -118,6 +118,15 @@ redémarrage du serveur. Le QR — ou les identifiants — ne servent donc qu'un
 fois par trimestre. `Authorization: Bearer` reste prioritaire sur le cookie ; le
 cookie ne sert que de repli quand aucun en-tête n'est présent.
 
+### Export calendrier
+
+`GET /calendar.ics` rend les devoirs et contrôles datés de l'élève au format
+iCalendar (RFC 5545) : un `VEVENT` par échéance (les cours, infos et messages
+ne sont pas exportés), `DTSTART` au jour d'échéance, `UID` stable dérivé de la
+clé de contenu (un abonnement met à jour l'événement au lieu d'en créer un
+second). Le flux exige le même jeton que l'API (`Authorization: Bearer` ou
+cookie de session) et répond en `Content-Type: text/calendar; charset=utf-8`.
+
 ### Tentatives de connexion
 
 Cinq échecs d'identifiants pour un même compte derrière une même IP sur cinq
