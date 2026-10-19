@@ -49,6 +49,9 @@ def client(tmp_path, monkeypatch):
 
     main = importlib.import_module("server.main")
     with TestClient(main.app) as test_client:
+        # Jeton CSRF de pré-connexion : les routes d'écriture l'exigent.
+        jeton = test_client.get("/api/auth/csrf").json()["csrf_token"]
+        test_client.headers.update({"X-CSRF-Token": jeton, "Origin": "http://testserver"})
         yield test_client
 
     conn = deps._conn
@@ -106,8 +109,14 @@ def pronote_mot_de_passe(monkeypatch):
     )
 
 
+def _rafraichit_csrf(client) -> None:
+    """Le jeton CSRF est lié à la session : on le redemande avant chaque écriture."""
+    client.headers["X-CSRF-Token"] = client.get("/api/auth/csrf").json()["csrf_token"]
+
+
 def _nouveau_qr(client) -> str:
     """Crée une session QR et rend son `session_id`."""
+    _rafraichit_csrf(client)
     qr = client.post("/api/auth/qr", json={"pronote_url": PRONOTE_URL})
     assert qr.status_code == 200
     return qr.json()["session_id"]
@@ -123,6 +132,7 @@ def _connexion_pin(client, *, pin: str | None = None, session_id: str | None = N
 
 
 def _connexion_password(client, *, username: str = "eleve", password: str = "secret"):
+    _rafraichit_csrf(client)
     return client.post(
         "/api/auth/password",
         json={"pronote_url": PRONOTE_URL, "username": username, "password": password},
@@ -130,8 +140,10 @@ def _connexion_password(client, *, username: str = "eleve", password: str = "sec
 
 
 def _cookies(reponse) -> SimpleCookie:
+    """Toutes les en-têtes `Set-Cookie` (session + CSRF) dans un seul pot."""
     cookie = SimpleCookie()
-    cookie.load(reponse.headers["set-cookie"])
+    for entete in reponse.headers.get_list("set-cookie"):
+        cookie.load(entete)
     return cookie
 
 
