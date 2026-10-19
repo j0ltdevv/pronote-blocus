@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from . import deps
-from .routes import auth, chat, items, status
+from .routes import auth, calendar, chat, items, status
 from .security import SecurityHeadersMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -60,6 +60,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router)
 app.include_router(items.router)
+app.include_router(calendar.router)
 app.include_router(chat.router)
 app.include_router(status.router)
 
