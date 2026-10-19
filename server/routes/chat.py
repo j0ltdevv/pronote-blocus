@@ -20,6 +20,12 @@ router = APIRouter(
     dependencies=[Depends(require_csrf)],
 )
 
+#: Même plafond que le bot Telegram : 10 questions par compte et par jour.
+QUOTA_QUESTIONS_PAR_JOUR = 10
+MSG_QUOTA = (
+    f"Quota de {QUOTA_QUESTIONS_PAR_JOUR} questions par jour atteint, reviens demain."
+)
+
 
 # ── models ─────────────────────────────────────────────────────────────
 
@@ -153,13 +159,15 @@ def chat(
     """Question libre : réponse ancrée aux devoirs de l'élève."""
     user_id = user.user_id
 
-    # Quota de 10 questions/jour, comme le bot Telegram.
-    today_str = _today().isoformat()
-    if not db.bump_llm_count(conn, user_id, today_str, 10):
-        raise HTTPException(429, "Quota de 10 questions quotidiennes atteint.")
-
+    # Sans LLM, la réponse est une liste locale : aucune question consommée
+    # (même règle que le bot Telegram).
     if not cfg.llm_enabled:
         return ChatOut(answer=_fallback_answer(conn, cfg, user_id, body.question))
+
+    # Quota de 10 questions/jour, comme le bot Telegram.
+    today_str = _today().isoformat()
+    if not db.bump_llm_count(conn, user_id, today_str, QUOTA_QUESTIONS_PAR_JOUR):
+        raise HTTPException(429, MSG_QUOTA)
 
     block = _data_block(conn, cfg, user_id, body.question)
     answer = llm.chat_answer(body.question, block, cfg)
