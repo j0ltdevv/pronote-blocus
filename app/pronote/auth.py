@@ -64,7 +64,11 @@ def mobile_url(url: str, query: str = DEFAULT_MOBILE_QUERY) -> str:
     `token_login` ne fonctionne QUE sur l'endpoint mobile. On applique cette
     transformation à l'URL au moment de se connecter, jamais avant de la
     stocker : `users.pronote_url` garde la forme publique.
+
+    `query` vide (config `PRONOTE_MOBILE_QUERY` absente) → constante par défaut.
     """
+    if not query.strip():
+        query = DEFAULT_MOBILE_QUERY
     parts = urlsplit(url)
     segments = parts.path.split("/")
     if segments and not segments[-1].startswith("mobile."):
@@ -249,17 +253,22 @@ def login_with_password(
     return client, creds
 
 
-def token_login(credentials: dict, *, account_pin: str | None = None) -> object:
+def token_login(
+    credentials: dict, *, account_pin: str | None = None, mobile_query: str = ""
+) -> object:
     """Credentials rangés → client vivant. URL mobile obligatoire.
 
     Le nom d'appareil fait partie de l'enregistrement PRONOTE : réutiliser
     celui qui a servi au premier login, sinon le serveur refuse le jeton
     (mesuré : un device_name différent rend `logged_in = False`, sans lever).
+
+    `mobile_query` vient de la config (`PRONOTE_MOBILE_QUERY`) ; vide, on
+    retombe sur `DEFAULT_MOBILE_QUERY`.
     """
     import pronotepy
 
     client = pronotepy.Client.token_login(
-        pronote_url=mobile_url(credentials["pronote_url"]),
+        pronote_url=mobile_url(credentials["pronote_url"], mobile_query),
         username=credentials["username"],
         password=credentials["password"],
         uuid=credentials["uuid"],
