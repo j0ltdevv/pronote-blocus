@@ -295,6 +295,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now pronote-web
 systemctl status pronote-web            # active (running)
 curl -s http://127.0.0.1:8000/health    # {"status":"ok"}
+curl -s http://127.0.0.1:8000/healthz   # {"status":"ok","db":"ok"} (503 si la base ne répond pas)
 ```
 
 L'unité n'écoute **que sur la boucle locale** (`--host 127.0.0.1`). Ne jamais
