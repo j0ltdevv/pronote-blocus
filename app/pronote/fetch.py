@@ -20,6 +20,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -43,6 +44,10 @@ CONTENT_DELAY = 1.2
 FORWARD_DAYS = 45
 #: Attente avant l'unique nouvel essai sur un 429/403.
 BACKOFF_SECONDS = 3
+#: Délai (connexion, lecture) imposé aux requêtes de pronotepy, en secondes.
+#: pronotepy n'en pose aucun : sans lui, une socket figée bloque la synchro
+#: et le verrou du compte indéfiniment.
+HTTP_TIMEOUT = (10, 30)
 
 ERR_TOKEN = "token invalide"
 ERR_PIN = "PIN requis"
@@ -139,11 +144,23 @@ def _cache_put(key: tuple[str, str, str], content: Any) -> None:
 # ─────────────────────────── erreurs ───────────────────────────
 
 
+#: pronotepy signale un statut HTTP refusé SANS code structuré :
+#: `PronoteAPIError("Bad request (http status: 429)")`.
+_HTTP_STATUS_RE = re.compile(r"http status[:\s]*(\d{3})", re.I)
+
+
 def _http_status(exc: BaseException) -> int | None:
+    """Code HTTP porté par l'exception, quelle que soit sa forme."""
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
     if isinstance(status, int):
         return status
+    code = getattr(exc, "pronote_error_code", None)
+    if isinstance(code, int):
+        return code
+    match = _HTTP_STATUS_RE.search(str(exc))
+    if match:
+        return int(match.group(1))
     return None
 
 
@@ -173,6 +190,12 @@ def _error_of(exc: BaseException) -> str:
         # 23 (« Unknown error from pronote: 23 »), sans code structuré.
         if code == 23 or "pronote: 23" in str(exc):
             return ERR_TOKEN
+        # Un statut HTTP refusé arrive en texte, sans `pronote_error_code`.
+        status = _http_status(exc)
+        if status == 401:
+            return ERR_TOKEN
+        if status in (403, 429):
+            return ERR_RATE
         return ERR_UNKNOWN
     if isinstance(exc, requests.RequestException):
         status = _http_status(exc)
@@ -185,7 +208,15 @@ def _error_of(exc: BaseException) -> str:
 
 
 def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Appel réseau : sur 429/403, une pause puis UN seul nouvel essai."""
+    """Appel réseau : sur 429/403, une pause puis UN seul nouvel essai.
+
+    Ne réessaie QUE les `requests.HTTPError`. Les erreurs de pronotepy
+    (`PronoteAPIError("Bad request (http status: 429)")`) ne le sont pas :
+    `ClientBase.post` a déjà fait un `refresh()` (login complet) et rejoué
+    la requête avant de la propager ; insister relancerait un login de plus
+    pendant que le serveur throttle. `_error_of` les classe en `ERR_RATE`
+    (« réessaie dans 5 minutes ») et la synchro suivante reprend.
+    """
     import requests
 
     try:
@@ -204,6 +235,39 @@ def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 
 
 # ─────────────────────────── helpers PRONOTE ───────────────────────────
+
+
+def _arm_timeout(client: Any, timeout: Any = HTTP_TIMEOUT) -> None:
+    """Impose un délai à chaque requête du client pronotepy.
+
+    pronotepy ne passe aucun `timeout` à `requests` : une socket figée
+    bloquerait la synchro (et le verrou du compte) sans fin. On patche le
+    `Session` à l'instance — `Session.get`/`post` passent par `self.request`.
+    Sans client réel (tests, objets factices), ne fait rien.
+    """
+    session = getattr(getattr(client, "communication", None), "session", None)
+    if session is None or getattr(session, "_timeout_arme", False):
+        return
+    request = session.request
+
+    def request_with_timeout(method: str, url: str, **kwargs: Any) -> Any:
+        kwargs.setdefault("timeout", timeout)
+        return request(method, url, **kwargs)
+
+    session.request = request_with_timeout
+    session._timeout_arme = True
+
+
+def _client_call(
+    client: Any, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:
+    """`_call` sur un client pronotepy, timeout réarmé à chaque requête.
+
+    Un `refresh()` de pronotepy remplace `communication` par un `Session`
+    neuf : le délai posé sur l'ancien disparaît avec lui.
+    """
+    _arm_timeout(client)
+    return _call(fn, *args, **kwargs)
 
 
 def _window(cfg: Config) -> tuple[date, date, date]:
@@ -228,7 +292,7 @@ def subjects_of(client: Any, cfg: Config) -> list[str]:
     """
     date_from, today, _ = _window(cfg)
     try:
-        lessons = _call(client.lessons, date_from, today)
+        lessons = _client_call(client, client.lessons, date_from, today)
     except Exception:
         lessons = []
     names: set[str] = set()
@@ -239,7 +303,7 @@ def subjects_of(client: Any, cfg: Config) -> list[str]:
     if not names:
         # Filet : certains comptes n'ont aucun cours sur la fenêtre.
         try:
-            for lesson in _call(client.lessons, today, today) or []:
+            for lesson in _client_call(client, client.lessons, today, today) or []:
                 name = clean_text(getattr(getattr(lesson, "subject", None), "name", ""))
                 if name:
                     names.add(name)
@@ -257,7 +321,7 @@ def _content_is_empty(content: Any) -> bool:
 
 
 def _read_content(client: Any, lesson: Any) -> Any:
-    return _call(lambda: lesson.content)
+    return _client_call(client, lambda: lesson.content)
 
 
 def _discussion_body(discussion: Any) -> str:
@@ -321,9 +385,10 @@ def _extract(conn: Any, subject: str, body: str, cfg: Config) -> dict | None:
 def _fetch_items(client: Any, cfg: Config, conn: Any) -> RawBundle:
     """Phase `items` : devoirs, informations, messagerie. Aucun `.content`."""
     date_from, today, date_to = _window(cfg)
-    homework = _call(client.homework, date_from, date_to) or []
+    homework = _client_call(client, client.homework, date_from, date_to) or []
     infos = (
-        _call(
+        _client_call(
+            client,
             client.information_and_surveys,
             datetime.combine(date_from, dtime.min),
             datetime.combine(today, dtime.max),
@@ -335,7 +400,7 @@ def _fetch_items(client: Any, cfg: Config, conn: Any) -> RawBundle:
     discussions: list[tuple[str, Callable[[], str]]] = []
     extracted: dict[str, dict | None] = {}
     seen: set[str] = set()
-    for discussion in _call(client.discussions) or []:
+    for discussion in _client_call(client, client.discussions) or []:
         # On ne lit QUE les discussions ouvertes, et on ne les marque jamais lues.
         if getattr(discussion, "closed", False):
             continue
@@ -343,17 +408,17 @@ def _fetch_items(client: Any, cfg: Config, conn: Any) -> RawBundle:
         if subject in seen:
             continue
         seen.add(subject)
-        try:
-            body = _discussion_body(discussion)  # déclenche les messages
-        except Exception:
-            body = ""
+        # Une discussion illisible fait échouer la phase : la traiter comme
+        # vide la ferait disparaître, et `replace_items` purgerait les items
+        # `messagerie` déjà connus de l'élève.
+        body = _discussion_body(discussion)  # déclenche les messages
         if not body:
             continue
         discussion_extraction = _extract(conn, subject, body, cfg)
         extracted[subject] = discussion_extraction
         discussions.append((subject, (lambda text=body: text)))
 
-    lessons = _call(client.lessons, date_from, today) or []
+    lessons = _client_call(client, client.lessons, date_from, today) or []
 
     return RawBundle(
         homework=list(homework),
@@ -375,14 +440,22 @@ def _merge_items(existing: list[Item], fresh: list[Item]) -> list[Item]:
 
 def _collect_cours(
     client: Any, conn: Any, user_id: str, cfg: Config, bundle: RawBundle
-) -> tuple[list[Item], int]:
+) -> tuple[list[Item], int, dict[str, str]]:
     """Phase `cours` : lit les contenus non encore traités, dans la limite.
 
     Ne reconstruit que les items `cours`/`controle`, puis les unit aux items
     déjà en base : la phase `items` n'est jamais écrasée.
+
+    Les statuts `lesson_seen` ne sont PAS écrits ici : `collect` ne les pose
+    qu'après un `replace_items` réussi. Sinon une panne en fin de passe
+    (429, disque, build) marquerait « traité » un cours dont l'item n'a
+    jamais été persisté, et la passe suivante le sauterait pour toujours.
     """
     statuses = db.lesson_status(conn, user_id)
     contents: dict[str, Any] = {}
+    pending: dict[str, str] = {}
+    first_failure: Exception | None = None
+    obtained = 0
     reads = 0
     skipped = 0
 
@@ -401,8 +474,19 @@ def _collect_cours(
                 continue
             if reads:
                 time.sleep(CONTENT_DELAY)
-            content = _read_content(client, lesson)
             reads += 1
+            try:
+                content = _read_content(client, lesson)
+            except RateLimited:
+                raise
+            except Exception as exc:
+                # Une lecture ratée ne jette pas les autres : le cours garde
+                # son statut, la synchro suivante le retentera. Les items
+                # déjà en base pour ce cours restent (voir `_merge_items`).
+                if first_failure is None:
+                    first_failure = exc
+                skipped += 1
+                continue
             # Contenu vide : ne PAS mettre en cache. Le docstring de la phase
             # cours promet de « retenter à chaque passage ceux dont le contenu
             # est encore vide ». Un cours vide mis en cache serait jamais
@@ -413,15 +497,21 @@ def _collect_cours(
             if not _content_is_empty(content):
                 _cache_put(_cache_key(user_id, lesson), content)
 
+        obtained += 1
         contents[slot] = content
-        db.set_lesson_status(
-            conn, user_id, slot, STATUS_VIDE if _content_is_empty(content) else STATUS_TRAITE
-        )
+        pending[slot] = STATUS_VIDE if _content_is_empty(content) else STATUS_TRAITE
+
+    if first_failure is not None and obtained == 0:
+        # Aucune lecture n'a abouti (session expirée, serveur mort) : ce
+        # n'est pas une panne partielle. Échouer fait rejouer la synchro
+        # sans attendre le délai de fraîcheur, et rien n'est purgé.
+        raise first_failure
 
     bundle.contents = contents
+    _arm_timeout(client)  # `build_items` lit `info.content()`
     fresh = build_items(client, bundle)
     existing = db.get_items(conn, user_id)
-    return _merge_items(existing, fresh), reads
+    return _merge_items(existing, fresh), reads, pending
 
 
 def collect(
@@ -433,21 +523,28 @@ def collect(
 ) -> SyncResult:
     """Synchro sans login : réutilisable juste après une connexion par QR."""
     cfg.ensure_dirs()
+    _arm_timeout(client)
     phase = PHASE_COURS if phase == PHASE_COURS else PHASE_ITEMS
     try:
         db.set_sync_state(conn, user_id, phase)
         class_name = class_name_of(client)
+        lesson_statuses: dict[str, str] = {}
         if phase == PHASE_ITEMS:
             bundle = _fetch_items(client, cfg, conn)
+            _arm_timeout(client)  # `build_items` lit `info.content()`
             items = build_items(client, bundle)
             reads = 0
         else:
             date_from, today, _ = _window(cfg)
             bundle = RawBundle(
-                lessons=list(_call(client.lessons, date_from, today) or []),
+                lessons=list(
+                    _client_call(client, client.lessons, date_from, today) or []
+                ),
                 today=today,
             )
-            items, reads = _collect_cours(client, conn, user_id, cfg, bundle)
+            items, reads, lesson_statuses = _collect_cours(
+                client, conn, user_id, cfg, bundle
+            )
     except Exception as exc:
         error = _error_of(exc)
         db.set_sync_state(conn, user_id, "idle")
@@ -456,6 +553,10 @@ def collect(
 
     try:
         db.replace_items(conn, user_id, items)
+        # Statuts posés SEULEMENT une fois les items persistés : un cours
+        # marqué « traité » dont l'item manque ne serait plus jamais relu.
+        for slot, status in lesson_statuses.items():
+            db.set_lesson_status(conn, user_id, slot, status)
         if class_name:
             db.set_class_name(conn, user_id, class_name)
         db.mark_synced(conn, user_id)
