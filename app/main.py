@@ -32,7 +32,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import config, crypto, db, llm, render
+from . import config, crypto, db, instance, llm, render
 from .pronote import auth, fetch, ranking
 
 log = logging.getLogger(__name__)
@@ -1405,12 +1405,26 @@ def main() -> None:
     except RuntimeError as exc:
         raise SystemExit(f"Configuration incomplète : {exc}") from None
     cfg.ensure_dirs()
-    conn = db.connect(cfg.db_path)
-    db.init_schema(conn)
-    db.purge_old_summaries(conn)
-    application = build_application(cfg, conn)
-    log.info("pronote-blocus démarre en long polling")
-    application.run_polling()
+    lock = instance.InstanceLock(cfg.locks_dir / "instance.lock")
+    try:
+        lock.acquire()
+    except instance.AlreadyRunning:
+        # Avant `db.connect` : le second processus ne touche pas la base.
+        print(
+            f"Une autre instance utilise déjà {cfg.data_dir} "
+            f"(verrou {lock.path} tenu). Arrête-la ou choisis un autre DATA_DIR.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from None
+    try:
+        conn = db.connect(cfg.db_path)
+        db.init_schema(conn)
+        db.purge_old_summaries(conn)
+        application = build_application(cfg, conn)
+        log.info("pronote-blocus démarre en long polling")
+        application.run_polling()
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":
