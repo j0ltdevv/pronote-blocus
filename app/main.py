@@ -1237,6 +1237,12 @@ def build_application(cfg: config.Config, conn, request=None) -> Application:
         application.bot_data["cfg"] = cfg
         application.create_task(digest_loop(application, conn, cfg))
 
+    # Le jeton du bot circule dans les URL des appels Telegram
+    # (`…/bot<JETON>/…`). Python-telegram-bot et httpx les journalisent en
+    # DEBUG/INFO : on plafonne ces loggers pour que ce secret ne puisse
+    # jamais atterrir dans les logs, quel que soit le niveau de la racine.
+    for _logger in ("telegram", "httpx", "httpcore"):
+        logging.getLogger(_logger).setLevel(logging.WARNING)
     builder = Application.builder().token(cfg.telegram_token).post_init(post_init)
     if request is not None:
         builder = builder.request(request)
