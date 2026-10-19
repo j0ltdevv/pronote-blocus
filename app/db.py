@@ -691,6 +691,11 @@ def delete_web_session(conn: sqlite3.Connection, token_hash: str) -> None:
     with conn:
         conn.execute("DELETE FROM web_sessions WHERE token_hash = ?", (token_hash,))
 
+def delete_user_web_sessions(conn: sqlite3.Connection, user_id: str) -> None:
+    """Révoque toutes les sessions web d'un compte (rotation après connexion)."""
+    with conn:
+        conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+
 
 def purge_web_sessions(conn: sqlite3.Connection, now: int) -> None:
     with conn:

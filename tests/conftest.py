@@ -34,6 +34,16 @@ def _circuit_llm_ferme():
     llm._reset_down()
 
 
+
+@pytest.fixture(autouse=True)
+def _reinitialise_limiteur_login():
+    """Le compteur de tentatives de connexion est un état global de module."""
+    from server import deps as server_deps
+
+    server_deps._reset_login_limiter()
+    yield
+    server_deps._reset_login_limiter()
+
 @pytest.fixture
 def secret() -> str:
     return Fernet.generate_key().decode()
