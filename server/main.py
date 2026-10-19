@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import deps
@@ -49,6 +50,23 @@ app.include_router(chat.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/healthz")
+def healthz():
+    """Sonde de vivacité : la base répond-elle ? 200, sinon 503.
+
+    La réponse ne contient ni chemin ni message d'erreur : un 503 dit
+    seulement que la base est injoignable (fichier disparu, disque plein,
+    connexion fermée), pas pourquoi.
+    """
+    try:
+        deps.get_conn().execute("SELECT 1").fetchone()
+    except Exception:
+        return JSONResponse(
+            {"status": "degraded", "db": "unavailable"}, status_code=503
+        )
+    return {"status": "ok", "db": "ok"}
 
 
 # Static files: serve web/ at root (API routes take precedence since registered first)
