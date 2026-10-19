@@ -141,8 +141,8 @@
       </section>
 
       <section id="homework" class="hidden">
-        <div class="list-tools">
-          <input id="searchInput" type="search" placeholder="Rechercher un devoir…" aria-label="Rechercher un devoir">
+        <div class="list-tools" role="search">
+          <input id="searchInput" type="search" placeholder="Rechercher un devoir…" aria-label="Rechercher un devoir" autocomplete="off">
           <select id="subjectSelect" aria-label="Filtrer par matière">
             <option value="">Toutes les matières</option>
           </select>
@@ -161,6 +161,11 @@
           <div><p class="eyebrow">Déjà fait</p><h2>Faits <span class="count" id="doneCount"></span></h2></div>
         </section>
         <div class="document-grid" id="doneList"></div>
+
+        <div id="noResults" class="no-results hidden" role="status">
+          <span id="noResultsText">Aucun devoir ne correspond à ces filtres.</span>
+          <button id="clearFilters" class="filter-clear" type="button">Effacer les filtres</button>
+        </div>
       </section>
 
       <div class="empty hidden" id="empty">Rien à afficher pour l'instant.</div>
