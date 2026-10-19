@@ -133,7 +133,7 @@ cookie ne sert que de repli quand aucun en-tête n'est présent.
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
 | `LLM_MESSAGES` | `1` | `0` = le corps des messages de profs ne sort jamais du serveur |
 | `MAX_CONCURRENT_SYNCS` | `4` | plafond de logins PRONOTE simultanés |
-| `DATA_DIR` | `data` | `app.db`, `uploads/`, `locks/` |
+| `DATA_DIR` | `data` | `app.db`, `locks/` |
 
 ## Ce que Blocus ne fait jamais
 
@@ -148,8 +148,10 @@ rien chez l'élève. Le seul état écrit est local (`done_local`, priorités,
   entre deux (`MAX_CONTENT_READS`, `CONTENT_DELAY`). Au-delà, `/cours` reste
   partiel jusqu'à la synchro suivante : chaque lecture de contenu est une
   requête réseau, et le serveur PRONOTE n'aime pas les rafales.
-- **`DATA_DIR/uploads/` est créé mais inutilisé** : seuls `app.db` et
-  `locks/` portent des données.
+- **`DATA_DIR/uploads/` n'est plus créé** : aucun fichier n'y est jamais écrit,
+  `ensure_dirs()` ne crée donc plus que `DATA_DIR` lui-même et `locks/`. Un
+  éventuel `uploads/` issu d'une installation précédente est inerte et peut
+  être supprimé à la main.
 - **Pièces jointes jamais téléchargées** : seul le nombre de fichiers d'un
   devoir est lu et affiché (📎2), aucun binaire n'est stocké.
 - **Une seule instance** : le service ne prend pas de verrou global. Deux
