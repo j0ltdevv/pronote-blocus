@@ -437,7 +437,7 @@ body.is-guest .mobile-menu{display:none}
 .plan-day header{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:6px}
 .plan-day header h3{margin:0; font:600 11px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
 .plan-day header span{font:500 11px/1 var(--mono); color:var(--faint)}
-.plan-row{display:flex; gap:14px; align-items:flex-start; padding:14px 0; border-bottom:1px solid var(--line)}
+.plan-row{display:flex; gap:14px; align-items:flex-start; padding:14px 0; border-bottom:1px solid var(--line); border-left:4px solid transparent}
 .plan-row:last-child{border-bottom:0}
 .plan-check{
   width:26px; height:26px; flex:0 0 26px; display:grid; place-items:center;
