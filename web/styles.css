@@ -304,6 +304,9 @@ button{font:inherit; color:inherit}
   background:transparent; color:var(--text); cursor:pointer;
   font:600 12px/1 var(--body); text-decoration:none;
 }
+.plan-tools{display:flex; align-items:center; gap:8px; margin:6px 0 14px; font-size:13px; color:var(--muted)}
+.plan-tools input{width:64px; padding:4px 6px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; text-align:center}
+.plan-tools input:focus{outline:none; border-color:var(--accent)}
 .open-doc:hover{border-color:var(--text)}
 .document-card.is-done{background:var(--paper-2); border-color:var(--line)}
 .document-card.is-done h3{color:var(--muted)}
