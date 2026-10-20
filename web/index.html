@@ -133,6 +133,11 @@
         <p class="eyebrow">Rattrapage</p>
         <h2 id="planTitle" class="plan-title">Ton plan</h2>
         <p class="subline" id="planSummary"></p>
+        <div class="plan-tools">
+          <label for="planBudget">Objectif par jour</label>
+          <input id="planBudget" type="number" min="15" max="180" step="15" value="45" inputmode="numeric">
+          <span>min</span>
+        </div>
         <div class="plan-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progression du rattrapage">
           <span id="planBar"></span>
         </div>
