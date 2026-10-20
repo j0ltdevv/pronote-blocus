@@ -263,3 +263,15 @@ def test_auth_tabs_switch(page, pb_server):
     page.locator('.auth-tab[data-tab="qr"]').click()
     expect(page.locator("#qrTab")).to_be_visible()
     expect(page.locator("#pwdTab")).to_be_hidden()
+
+def test_auth_default_tab_desktop(page, pb_server):
+    _go_guest(page, pb_server)
+    expect(page.locator("#qrTab")).to_be_visible()
+    expect(page.locator("#pwdTab")).to_be_hidden()
+
+
+def test_auth_default_tab_mobile(page, pb_server):
+    page.set_viewport_size({"width": 400, "height": 800})
+    _go_guest(page, pb_server)
+    expect(page.locator("#pwdTab")).to_be_visible()
+    expect(page.locator("#qrTab")).to_be_hidden()
