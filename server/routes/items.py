@@ -47,14 +47,14 @@ def _to_api(item, done: set[str]) -> dict[str, Any]:
     }
 
 
-def _rows_for(conn, cfg: Config, user_id: str):
+def _rows_for(conn, cfg: Config, user_id: str, include_done: bool = False):
     """Items + résumés + priorités + cochages, triés par `ranking.split_sections`."""
     items = db.get_items(conn, user_id)
     summaries = llm.ensure_summaries(conn, items, cfg)
     priorities = db.get_priorities(conn, user_id)
     done = db.done_keys(conn, user_id)
     overdue, upcoming = ranking.split_sections(
-        items, summaries, priorities, _today(), done
+        items, summaries, priorities, _today(), done, include_done=include_done
     )
     return list(overdue) + list(upcoming)
 
@@ -71,7 +71,7 @@ def list_items(
     """Liste des devoirs de l'élève, triés par urgence puis matières."""
     user_id = user.user_id
     done = db.done_keys(conn, user_id)
-    rows = _rows_for(conn, cfg, user_id)
+    rows = _rows_for(conn, cfg, user_id, include_done=True)
     return [_to_api(row.item, done) for row in rows]
 
 

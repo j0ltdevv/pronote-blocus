@@ -309,7 +309,9 @@ function render() {
   $("profileMeta").textContent = `${items.length} ${plural(items.length, "devoir", "devoirs")} suivis`;
 
   const fill = (name, list) => {
-    $(name + "Section").classList.toggle("hidden", list.length === 0 || (filter !== "all" && filter !== name));
+    const visible = list.length > 0 && (filter === "all" || filter === name);
+    $(name + "Section").classList.toggle("hidden", !visible);
+    $(name + "List").classList.toggle("hidden", !visible);
     $(name + "Count").textContent = list.length ? String(list.length) : "";
     $(name + "List").innerHTML = list.map(itemCard).join("");
   };

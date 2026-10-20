@@ -60,13 +60,14 @@ def split_sections(
     priorities: dict[str, int],
     today: date,
     done: set[str] | None = None,
+    include_done: bool = False,
 ) -> tuple[list[Row], list[Row]]:
     """(retard, à venir). Les `cours` sont exclus : ils alimentent /cours."""
     done = done or set()
     overdue: list[Row] = []
     upcoming: list[Row] = []
     for item in items:
-        if item.kind == "cours" or item.key in done:
+        if item.kind == "cours" or (not include_done and item.key in done):
             continue
         row = to_row(item, summary.get(item.key))
         if item.due_date is not None and item.due_date < today:

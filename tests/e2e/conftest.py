@@ -74,8 +74,7 @@ def _seed(db_path: Path) -> None:
     con.commit()
     con.close()
 
-
-@pytest.fixture(scope="session")
+@pytest.fixture
 def pb_server(tmp_path_factory):
     data_dir = tmp_path_factory.mktemp("pb-e2e")
     port = _free_port()

@@ -248,12 +248,15 @@ def test_cocher_un_devoir_n_ecrit_que_dans_son_compte(client, conn):
         "Mathématiques"
     ]
 
-    # A coche SON devoir : le cochage part sous son compte (le devoir coché sort
-    # de la liste, `ranking.split_sections` ne rend que ce qui reste à faire).
+    # A coche SON devoir : le cochage part sous son compte. Depuis le fix
+    # `include_done`, le devoir coché RESTE visible (marqué fait) pour
+    # alimenter l'UI « Faits ».
     devoir_a = client.get("/api/items", headers=_entete(jeton_a)).json()[0]["id"]
     client.post("/api/items/done", json={"item_id": devoir_a}, headers=_entete(jeton_a))
     assert db.done_keys(conn, user_a) == {devoir_a, devoir_b}
-    assert client.get("/api/items", headers=_entete(jeton_a)).json() == []
+    liste = client.get("/api/items", headers=_entete(jeton_a)).json()
+    assert [i["id"] for i in liste] == [devoir_a]
+    assert liste[0]["done"] is True
     assert db.done_keys(conn, user_b) == set()
 
 
