@@ -32,3 +32,5 @@ packages = ["app", "app.pronote", "server", "server.routes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["e2e: tests d'interface (pytest-playwright) contre une instance isolée"]
+addopts = "-m 'not e2e'"
