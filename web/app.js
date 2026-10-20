@@ -222,14 +222,14 @@ function itemCard(item) {
   const badge = KIND_LABEL[item.kind] || "DOC";
 
   return `
-    <article class="document-card${item.done ? " is-done" : ""}" data-id="${id}">
+    <article class="document-card ${subjectSc(item.subject)}${item.done ? " is-done" : ""}" data-id="${id}">
       <div class="doc-top">
         <span class="file-icon ${late ? "pdf" : "doc"}">${badge}</span>
         <span class="done-mark${item.done ? " active" : ""}" title="${item.done ? "Fait" : "À faire"}"
               aria-label="${item.done ? "Fait" : "À faire"}">${item.done ? "★" : "☆"}</span>
       </div>
       <h3>${title}</h3>
-      <p>${subject} <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
+      <p><span class="subject-dot"></span>${subject} <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
       <div class="doc-footer">
         <span>${abs || "—"}</span>
         <button class="open-doc" data-done="${id}">${item.done ? "↺ Refaire" : "✓ Marquer fait"}</button>
@@ -410,14 +410,20 @@ function dayLabel(offset) {
 function planRow(it) {
   const id = String(it.id);
   return `
-    <article class="plan-row${it.done ? " is-done" : ""}" data-id="${escapeHtml(id)}">
+    <article class="plan-row ${subjectSc(it.subject)}${it.done ? " is-done" : ""}" data-id="${escapeHtml(id)}">
       <button class="plan-check${it.done ? " active" : ""}" data-done="${escapeHtml(id)}"
               aria-label="${it.done ? "Remettre à faire" : "Marquer comme fait"}">${it.done ? "✓" : ""}</button>
       <div class="plan-body">
         <h3>${escapeHtml(it.title || "Devoir")}</h3>
-        <p>${escapeHtml(it.subject || "—")} · ${estimateMinutes(it)} min</p>
+        <p><span class="subject-dot"></span>${escapeHtml(it.subject || "—")} · ${estimateMinutes(it)} min</p>
       </div>
     </article>`;
+}
+const SUBJECT_SC = ["sc-1", "sc-2", "sc-3", "sc-4", "sc-5", "sc-6"];
+function subjectSc(subject) {
+  let h = 0;
+  for (const ch of String(subject || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return SUBJECT_SC[h % SUBJECT_SC.length];
 }
 
 function renderPlan() {
@@ -501,6 +507,7 @@ async function loadItems({ silent = false } = {}) {
     clearNotice();
     hide("loading");
     render();
+    refreshAiSummary(false);
     show("chat");
     $("mobileFilters").classList.remove("hidden");
     $("syncLabel").textContent = "Synchronisé à l'instant";
@@ -544,6 +551,18 @@ $("homework").addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-done]");
   if (!btn) return;
   await toggleDone(btn.dataset.done, btn.closest(".document-card"));
+});
+// Cliquer un devoir ouvre une discussion contextuelle dessus.
+document.addEventListener("click", (e) => {
+  const card = e.target.closest(".document-card, .plan-row");
+  if (!card) return;
+  if (e.target.closest("button")) return;
+  const it = items.find((i) => String(i.id) === String(card.dataset.id));
+  if (!it) return;
+  const input = $("chatInput");
+  if (input) input.value = `Aide-moi avec : ${it.title}${it.subject ? ` (${it.subject})` : ""}`;
+  show("chat");
+  input?.focus();
 });
 
 // ── Filtres (sidebar + mobile) ─────────────────────────────────────
@@ -784,6 +803,42 @@ $("chatForm").addEventListener("submit", async (e) => {
   }
   pending.scrollIntoView({ block: "end", behavior: REDUCED ? "auto" : "smooth" });
 });
+
+// ── Résumé IA (en tête de liste) ─────────────────────────────────────
+const AI_SUMMARY_KEY = "pronote_ai_summary";
+async function refreshAiSummary(force = false) {
+  const btn = $("aiSummaryBtn"), box = $("aiSummary");
+  if (!btn || !box || !token) return;
+  if (!items.length) { hide("aiSummary", "aiSummaryBtn"); return; }
+  const today = startOfToday().toISOString().slice(0, 10);
+  const cached = localStorage.getItem(AI_SUMMARY_KEY);
+  if (!force && cached) {
+    try {
+      const c = JSON.parse(cached);
+      if (c.day === today && c.n === items.length) {
+        box.textContent = c.text;
+        show("aiSummary");
+        show("aiSummaryBtn");
+        return;
+      }
+    } catch { /* cache invalide */ }
+  }
+  show("aiSummaryBtn");
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const data = await api("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ question: "En une seule phrase, résume ce qui te reste à faire et dis quelle est la priorité. Sois bref." }),
+    });
+    box.textContent = data.answer;
+    show("aiSummary");
+    localStorage.setItem(AI_SUMMARY_KEY, JSON.stringify({ day: today, n: items.length, text: data.answer }));
+  } catch { /* silencieux : pas de résumé ce coup-ci */ }
+  btn.disabled = false;
+  btn.textContent = "✦ Résumé IA";
+}
+$("aiSummaryBtn")?.addEventListener("click", () => refreshAiSummary(true));
 
 // ── Actualisation ─────────────────────────────────────────────────────
 async function doRefresh(btn) {
