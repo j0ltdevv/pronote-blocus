@@ -685,6 +685,16 @@ for (const btn of document.querySelectorAll(".auth-tab")) {
   });
 }
 
+// Sur mobile (écran étroit ou tactile), le QR exige un 2e écran :
+// on ouvre d'office « Identifiants » (ENT/Lycée Connecté).
+if (
+  window.matchMedia("(max-width: 640px)").matches
+  || navigator.maxTouchPoints > 0
+) {
+  const pwdTab = document.querySelector('.auth-tab[data-tab="pwd"]');
+  if (pwdTab) pwdTab.click();
+}
+
 /** Remplit le sélecteur d'ENT avec ce que pronotepy sait gérer. */
 async function loadEnts() {
   try {
