@@ -233,7 +233,7 @@ function itemCard(item) {
               aria-label="${item.done ? "Fait" : "À faire"}">${item.done ? "★" : "☆"}</span>
       </div>
       <h3>${title}</h3>
-      <p><span class="subject-dot"></span>${subject} <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
+      <p><span class="subject-pill"><span class="subject-dot"></span>${subject}</span> <i>·</i> ${late ? `<b class="late">${rel}</b>` : rel}</p>
       <div class="doc-footer">
         <span>${abs || "—"}</span>
         <button class="open-doc" data-done="${id}">${item.done ? "↺ Refaire" : "✓ Marquer fait"}</button>
@@ -419,7 +419,7 @@ function planRow(it) {
               aria-label="${it.done ? "Remettre à faire" : "Marquer comme fait"}">${it.done ? "✓" : ""}</button>
       <div class="plan-body">
         <h3>${escapeHtml(it.title || "Devoir")}</h3>
-        <p><span class="subject-dot"></span>${escapeHtml(it.subject || "—")} · ${estimateMinutes(it)} min</p>
+        <p><span class="subject-pill"><span class="subject-dot"></span>${escapeHtml(it.subject || "—")}</span> · ${estimateMinutes(it)} min</p>
       </div>
     </article>`;
 }

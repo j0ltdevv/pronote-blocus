@@ -304,21 +304,28 @@ button{font:inherit; color:inherit}
 .ai-summary{margin:10px 0 0; padding:10px 12px; background:var(--green-soft); border-left:3px solid var(--green); border-radius:var(--radius-sm); color:var(--text); font-size:14px; line-height:1.5}
 .ai-summary-btn{margin-top:10px}
 /* couleur par matière — touches discrètes sur les devoirs */
-.subject-dot{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; background:var(--line-strong)}
-.document-card{border-left-width:3px}
-.plan-row{border-left-width:3px}
+.subject-pill{display:inline-flex; align-items:center; gap:6px; font:600 11px/1 var(--mono); letter-spacing:.03em; padding:3px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:transparent}
+.subject-dot{width:7px; height:7px; border-radius:50%; background:currentColor; flex:0 0 auto}
+.document-card{border-left-width:4px}
+.plan-row{border-left-width:4px}
 .document-card.sc-1{border-left-color:var(--c1)} .plan-row.sc-1{border-left-color:var(--c1)}
 .document-card.sc-2{border-left-color:var(--c2)} .plan-row.sc-2{border-left-color:var(--c2)}
 .document-card.sc-3{border-left-color:var(--c3)} .plan-row.sc-3{border-left-color:var(--c3)}
 .document-card.sc-4{border-left-color:var(--c4)} .plan-row.sc-4{border-left-color:var(--c4)}
 .document-card.sc-5{border-left-color:var(--c5)} .plan-row.sc-5{border-left-color:var(--c5)}
 .document-card.sc-6{border-left-color:var(--c6)} .plan-row.sc-6{border-left-color:var(--c6)}
-.document-card.sc-1 .subject-dot{background:var(--c1)} .plan-row.sc-1 .subject-dot{background:var(--c1)}
-.document-card.sc-2 .subject-dot{background:var(--c2)} .plan-row.sc-2 .subject-dot{background:var(--c2)}
-.document-card.sc-3 .subject-dot{background:var(--c3)} .plan-row.sc-3 .subject-dot{background:var(--c3)}
-.document-card.sc-4 .subject-dot{background:var(--c4)} .plan-row.sc-4 .subject-dot{background:var(--c4)}
-.document-card.sc-5 .subject-dot{background:var(--c5)} .plan-row.sc-5 .subject-dot{background:var(--c5)}
-.document-card.sc-6 .subject-dot{background:var(--c6)} .plan-row.sc-6 .subject-dot{background:var(--c6)}
+.document-card.sc-1 .subject-pill{color:var(--c1); border-color:var(--c1); background:var(--c1-soft)}
+.plan-row.sc-1 .subject-pill{color:var(--c1); border-color:var(--c1); background:var(--c1-soft)}
+.document-card.sc-2 .subject-pill{color:var(--c2); border-color:var(--c2); background:var(--c2-soft)}
+.plan-row.sc-2 .subject-pill{color:var(--c2); border-color:var(--c2); background:var(--c2-soft)}
+.document-card.sc-3 .subject-pill{color:var(--c3); border-color:var(--c3); background:var(--c3-soft)}
+.plan-row.sc-3 .subject-pill{color:var(--c3); border-color:var(--c3); background:var(--c3-soft)}
+.document-card.sc-4 .subject-pill{color:var(--c4); border-color:var(--c4); background:var(--c4-soft)}
+.plan-row.sc-4 .subject-pill{color:var(--c4); border-color:var(--c4); background:var(--c4-soft)}
+.document-card.sc-5 .subject-pill{color:var(--c5); border-color:var(--c5); background:var(--c5-soft)}
+.plan-row.sc-5 .subject-pill{color:var(--c5); border-color:var(--c5); background:var(--c5-soft)}
+.document-card.sc-6 .subject-pill{color:var(--c6); border-color:var(--c6); background:var(--c6-soft)}
+.plan-row.sc-6 .subject-pill{color:var(--c6); border-color:var(--c6); background:var(--c6-soft)}
 .doc-footer{
   margin-top:auto; padding-top:14px;
   display:flex; align-items:center; justify-content:space-between; gap:8px;
