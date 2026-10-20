@@ -178,7 +178,11 @@ function signOut() {
   $("qrStatus").textContent = "";
   $("pinStatus").textContent = "";
   chatMessages.innerHTML = "";
-  hide("homework", "empty", "loading", "chat");
+  hide("chat", "aiSummary", "aiSummaryBtn");
+  hide("homework", "empty", "loading");
+  $("chatInput").value = "";
+  localStorage.removeItem(AI_SUMMARY_KEY);
+  localStorage.removeItem("pronote_ai_summary_off");
   show("authQr");
   $("summaryTitle").textContent = "Bonjour.";
   $("summaryMeta").textContent = "Connecte ton compte pour voir tes devoirs.";
@@ -811,6 +815,11 @@ async function refreshAiSummary(force = false) {
   if (!btn || !box || !token) return;
   if (!items.length) { hide("aiSummary", "aiSummaryBtn"); return; }
   const today = startOfToday().toISOString().slice(0, 10);
+  const OFF_KEY = "pronote_ai_summary_off";
+  if (!force && localStorage.getItem(OFF_KEY) === today + "|off") {
+    hide("aiSummary");
+    return;
+  }
   const cached = localStorage.getItem(AI_SUMMARY_KEY);
   if (!force && cached) {
     try {
@@ -831,9 +840,16 @@ async function refreshAiSummary(force = false) {
       method: "POST",
       body: JSON.stringify({ question: "En une seule phrase, résume ce qui te reste à faire et dis quelle est la priorité. Sois bref." }),
     });
-    box.textContent = data.answer;
-    show("aiSummary");
-    localStorage.setItem(AI_SUMMARY_KEY, JSON.stringify({ day: today, n: items.length, text: data.answer }));
+    if (data.answer.startsWith("Je n'ai pas pu réfléchir")) {
+      // LLM indisponible : on n'affiche pas le repli comme résumé et on
+      // cesse d'essayer aujourd'hui (pas de quota gaspillé).
+      localStorage.setItem(OFF_KEY, today + "|off");
+      hide("aiSummary");
+    } else {
+      box.textContent = data.answer;
+      show("aiSummary");
+      localStorage.setItem(AI_SUMMARY_KEY, JSON.stringify({ day: today, n: items.length, text: data.answer }));
+    }
   } catch { /* silencieux : pas de résumé ce coup-ci */ }
   btn.disabled = false;
   btn.textContent = "✦ Résumé IA";
