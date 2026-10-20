@@ -339,7 +339,13 @@ function render() {
 // Un devoir non fait = une séance. On répartit les retards et les
 // échéances proches sur les 5 prochains jours, ~45 min par jour.
 const PLAN_DAYS = 5;
-const PLAN_MINUTES = 45;
+const PLAN_DEFAULT_MINUTES = 45;
+const PLAN_BUDGET_KEY = "pronote_plan_minutes";
+
+function planBudget() {
+  const raw = Number(localStorage.getItem(PLAN_BUDGET_KEY));
+  return Number.isFinite(raw) && raw >= 15 && raw <= 180 ? raw : PLAN_DEFAULT_MINUTES;
+}
 
 function estimateMinutes(it) {
   const base = it.kind === "pdf" ? 30 : it.kind === "ppt" ? 25 : 20;
@@ -370,6 +376,7 @@ function buildPlan() {
   const today = startOfToday();
   const horizon = new Date(today);
   horizon.setDate(horizon.getDate() + PLAN_DAYS);
+  const budgetLimit = planBudget();
   const todo = items
     .filter((it) => {
       if (it.done) return false;
@@ -382,7 +389,7 @@ function buildPlan() {
   let budget = 0;
   for (const it of todo) {
     const min = estimateMinutes(it);
-    if (day < PLAN_DAYS - 1 && budget > 0 && budget + min > PLAN_MINUTES) {
+    if (day < PLAN_DAYS - 1 && budget > 0 && budget + min > budgetLimit) {
       day += 1;
       budget = 0;
     }
@@ -798,6 +805,18 @@ async function doRefresh(btn) {
 refreshBtn.addEventListener("click", () => doRefresh(refreshBtn));
 topRefresh.addEventListener("click", () => doRefresh(topRefresh));
 $("logoutBtn").addEventListener("click", () => logout());
+const planBudgetInput = $("planBudget");
+if (planBudgetInput) {
+  planBudgetInput.value = String(planBudget());
+  planBudgetInput.addEventListener("change", () => {
+    const v = Number(planBudgetInput.value);
+    if (Number.isFinite(v) && v >= 15 && v <= 180) {
+      localStorage.setItem(PLAN_BUDGET_KEY, String(v));
+      savePlan(null);
+      renderPlan();
+    }
+  });
+}
 
 // ── Menu mobile (tiroir) ──────────────────────────────────────────────
 const sidebar = document.querySelector(".sidebar");
