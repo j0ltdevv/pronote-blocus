@@ -745,6 +745,10 @@ $("pwdForm").addEventListener("submit", async (e) => {
     await loadItems();
   } catch (err) {
     status.textContent = err.message;
+    // Échec : on déplie le choix d'ENT — c'est souvent là qu'est la cause
+    // (ENT par défaut ≠ région du lycée).
+    const advanced = $("pwdAdvanced");
+    if (advanced) advanced.open = true;
   } finally {
     $("pwdBtn").disabled = false;
   }
