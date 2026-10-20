@@ -27,6 +27,14 @@
   --red-soft:#f8ece8;
   --red-line:#ecc9c0;
 
+  /* touches de couleur par matière (discret, jamais néon) */
+  --c1:#2f5d50; --c1-soft:#e9efea;
+  --c2:#a13a29; --c2-soft:#f8ece8;
+  --c3:#8a6a1f; --c3-soft:#f4edda;
+  --c4:#43557e; --c4-soft:#ebeff5;
+  --c5:#6b3f6e; --c5-soft:#f3ecf4;
+  --c6:#5c6b33; --c6-soft:#eef0e4;
+
   --radius:3px;
   --radius-sm:2px;
   --shadow:none;
@@ -293,6 +301,24 @@ button{font:inherit; color:inherit}
 .document-card p{margin:0; color:var(--muted); font-size:12.5px}
 .document-card p i{font-style:normal; color:var(--faint)}
 .late{color:var(--red) !important; font-weight:600}
+.ai-summary{margin:10px 0 0; padding:10px 12px; background:var(--green-soft); border-left:3px solid var(--green); border-radius:var(--radius-sm); color:var(--text); font-size:14px; line-height:1.5}
+.ai-summary-btn{margin-top:10px}
+/* couleur par matière — touches discrètes sur les devoirs */
+.subject-dot{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; background:var(--line-strong)}
+.document-card{border-left-width:3px}
+.plan-row{border-left-width:3px}
+.document-card.sc-1{border-left-color:var(--c1)} .plan-row.sc-1{border-left-color:var(--c1)}
+.document-card.sc-2{border-left-color:var(--c2)} .plan-row.sc-2{border-left-color:var(--c2)}
+.document-card.sc-3{border-left-color:var(--c3)} .plan-row.sc-3{border-left-color:var(--c3)}
+.document-card.sc-4{border-left-color:var(--c4)} .plan-row.sc-4{border-left-color:var(--c4)}
+.document-card.sc-5{border-left-color:var(--c5)} .plan-row.sc-5{border-left-color:var(--c5)}
+.document-card.sc-6{border-left-color:var(--c6)} .plan-row.sc-6{border-left-color:var(--c6)}
+.document-card.sc-1 .subject-dot{background:var(--c1)} .plan-row.sc-1 .subject-dot{background:var(--c1)}
+.document-card.sc-2 .subject-dot{background:var(--c2)} .plan-row.sc-2 .subject-dot{background:var(--c2)}
+.document-card.sc-3 .subject-dot{background:var(--c3)} .plan-row.sc-3 .subject-dot{background:var(--c3)}
+.document-card.sc-4 .subject-dot{background:var(--c4)} .plan-row.sc-4 .subject-dot{background:var(--c4)}
+.document-card.sc-5 .subject-dot{background:var(--c5)} .plan-row.sc-5 .subject-dot{background:var(--c5)}
+.document-card.sc-6 .subject-dot{background:var(--c6)} .plan-row.sc-6 .subject-dot{background:var(--c6)}
 .doc-footer{
   margin-top:auto; padding-top:14px;
   display:flex; align-items:center; justify-content:space-between; gap:8px;
