@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-DEFAULT_PRONOTE_URL = "https://0332722e.index-education.net/pronote/eleve.html"
+DEFAULT_PRONOTE_URL = "https://ETABLISSEMENT.index-education.net/pronote/eleve.html"
 DEFAULT_MOBILE_QUERY = "?fd=1&bydlg=A6ABB224-12DD-4E31-AD3E-8A39A1C2C335&login=true"
 
 #: Telegram identifie les fils par un entier signé 64 bits.

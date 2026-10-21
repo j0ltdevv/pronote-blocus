@@ -202,7 +202,7 @@ de la requête ne sont jamais recopiés.
 | `ALLOW_PASSWORD_LOGIN` | `1` | activer (`1`/`true`) ou désactiver (`0`/`false`/`no`, insensible à la casse) la connexion par mot de passe |
 | `PASSWORD_ENT` | `lyceeconnecte_aquitaine` | ENT par défaut pour la connexion par mot de passe |
 | `WINDOW_START` | `2026-10-01` | début de la fenêtre de rattrapage ; elle court jusqu'à aujourd'hui + 45 jours (`FORWARD_DAYS`) |
-| `DEFAULT_PRONOTE_URL` | `https://0332722e.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
+| `DEFAULT_PRONOTE_URL` | `https://ETABLISSEMENT.index-education.net/pronote/eleve.html` | si le QR ne porte pas d'URL exploitable ; **à remplacer** par ton établissement |
 | `PRONOTE_MOBILE_QUERY` | `?fd=1&bydlg=A6ABB224-…&login=true` | paramètres de l'endpoint mobile appliqués à la reconnexion par jeton ; vide → constante par défaut |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | vide | endpoint OpenAI-compatible ; **sans lui, tout fonctionne en dégradé** |
 | `LLM_MESSAGES` | `1` | `0`/`false`/`no` (ou une valeur blanche) = le corps des messages de profs ne sort jamais du serveur ; vide = défaut |
