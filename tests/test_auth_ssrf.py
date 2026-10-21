@@ -214,7 +214,7 @@ def test_vecteur_5_resolution_vide_refusee(resolveur):
 @pytest.mark.parametrize(
     "url",
     [
-        "http://0332722e.index-education.net/pronote/eleve.html",
+        "http://ETABLISSEMENT.index-education.net/pronote/eleve.html",
         "http://demo.index-education.net:8443/pronote/eleve.html",
         "http://127.0.0.1/pronote/eleve.html",
     ],
@@ -266,17 +266,17 @@ def test_non_regression_sous_domaine_et_chemin_conserves(resolveur):
         "jeton": "0123456789",
         "url": DEFAULT_PRONOTE_URL,
     }
-    assert double.demandes == [("0332722e.index-education.net", 443)]
+    assert double.demandes == [("etablissement.index-education.net", 443)]
 
 
 def test_non_regression_port_personnalise_resolu_et_conserve(resolveur):
     double = resolveur(PUBLIQUE)
-    url = "https://0332722e.index-education.net:8443/pronote/parent.html"
+    url = "https://ETABLISSEMENT.index-education.net:8443/pronote/parent.html"
 
     assert auth.validate_pronote_url(url) == url
-    assert double.demandes == [("0332722e.index-education.net", 8443)]
+    assert double.demandes == [("etablissement.index-education.net", 8443)]
     assert auth.mobile_url(url).startswith(
-        "https://0332722e.index-education.net:8443/pronote/mobile.parent.html"
+        "https://ETABLISSEMENT.index-education.net:8443/pronote/mobile.parent.html"
     )
 
 
@@ -285,7 +285,7 @@ def test_non_regression_port_personnalise_resolu_et_conserve(resolveur):
     [
         "https://etab.index-education.net/pronote/eleve.html",
         "https://demo.index-education.net/pronote/eleve.html",
-        "https://0332722e.index-education.net/pronote/vie-scolaire.html#ancre",
+        "https://ETABLISSEMENT.index-education.net/pronote/vie-scolaire.html#ancre",
         "https://93.184.216.34/pronote/eleve.html",
         "https://[2606:2800:220:1:248:1893:25c8:1946]/pronote/eleve.html",
     ],

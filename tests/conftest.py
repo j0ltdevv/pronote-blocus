@@ -44,6 +44,21 @@ def _reinitialise_limiteur_login():
     yield
     server_deps._reset_login_limiter()
 
+@pytest.fixture(autouse=True)
+def _resolv_sans_reseau(monkeypatch):
+    """Aucun test ne dépend du DNS réel : tout nom résout vers une IP publique.
+
+    `validate_pronote_url` résout l'hôte avant d'accepter une URL ; des tests
+    envoient des URL d'établissements (ex. le placeholder par défaut) qui ne
+    doivent pas dépendre du réseau. Les tests anti-SSRF redéfinissent
+    `_resolved_addresses` eux-mêmes et priment sur ce défaut.
+    """
+    from app.pronote import auth as pronote_auth
+
+    monkeypatch.setattr(
+        pronote_auth, "_resolved_addresses", lambda _host, _port: ["93.184.216.34"]
+    )
+
 @pytest.fixture
 def secret() -> str:
     return Fernet.generate_key().decode()

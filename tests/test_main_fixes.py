@@ -32,7 +32,7 @@ from app.pronote.normalize import make_item
 from tests.fake_telegram import FakeTelegramRequest
 
 CHAT = 4242
-QR_URL = "https://0332722e.index-education.net/pronote/eleve.html"
+QR_URL = "https://ETABLISSEMENT.index-education.net/pronote/eleve.html"
 TODAY = config.today()
 
 

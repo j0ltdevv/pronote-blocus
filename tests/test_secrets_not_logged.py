@@ -33,7 +33,7 @@ LLM_KEY = "sk-SENTINEL-LLM-KEY-42"
 PASSWORD = "MotDePasse-SENTINEL-77"
 
 LLM_URL = "http://llm.sentinel.test/v1"
-QR_URL = "https://0332722e.index-education.net/pronote/eleve.html"
+QR_URL = "https://ETABLISSEMENT.index-education.net/pronote/eleve.html"
 
 SENTINELS = (TG_TOKEN, SECRET, LLM_KEY, PASSWORD)
 

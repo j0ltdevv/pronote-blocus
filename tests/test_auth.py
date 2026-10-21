@@ -226,13 +226,13 @@ def test_message_utilisateur_actionnable(error, attendu):
 
 def test_mobile_url_ajoute_l_endpoint_mobile_sur_l_url_par_defaut():
     assert auth.mobile_url(DEFAULT_PRONOTE_URL) == (
-        "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+        "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
         + DEFAULT_MOBILE_QUERY
     )
 
 
 def test_mobile_url_conserve_un_endpoint_deja_mobile():
-    deja = "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+    deja = "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
 
     assert auth.mobile_url(deja) == deja + DEFAULT_MOBILE_QUERY
 
@@ -251,9 +251,9 @@ def test_mobile_url_perd_le_fragment():
 
 
 def test_mobile_url_conserve_le_port_et_le_sous_domaine():
-    url = auth.mobile_url("https://0332722e.index-education.net:8443/pronote/parent.html")
+    url = auth.mobile_url("https://ETABLISSEMENT.index-education.net:8443/pronote/parent.html")
 
-    assert url.startswith("https://0332722e.index-education.net:8443/pronote/mobile.parent.html")
+    assert url.startswith("https://ETABLISSEMENT.index-education.net:8443/pronote/mobile.parent.html")
 
 
 # ─────────────────────── 3. texte du QR ───────────────────────
@@ -302,7 +302,7 @@ def test_parse_qr_text_champ_vide_leve_qr_not_pronote(cle):
 @pytest.mark.parametrize(
     "url",
     [
-        "ftp://0332722e.index-education.net/pronote/eleve.html",
+        "ftp://ETABLISSEMENT.index-education.net/pronote/eleve.html",
         "file:///pronote/eleve.html",
         "javascript:alert(1)",
         "https:///pronote/eleve.html",
@@ -468,7 +468,7 @@ def test_token_login_rejoue_le_jeton_sur_l_endpoint_mobile(monkeypatch):
     auth.token_login(credentials)
 
     assert calls["pronote_url"] == (
-        "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+        "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
         + DEFAULT_MOBILE_QUERY
     )
     assert calls["password"] == "jeton-exporte"

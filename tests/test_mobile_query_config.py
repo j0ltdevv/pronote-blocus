@@ -61,7 +61,7 @@ def test_mobile_url_vide_retombe_sur_la_constante():
     url = auth.mobile_url(config.DEFAULT_PRONOTE_URL, "")
 
     assert url == (
-        "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+        "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
         + config.DEFAULT_MOBILE_QUERY
     )
 
@@ -97,7 +97,7 @@ def test_une_query_personnalisee_apparait_dans_l_url(monkeypatch):
     auth.token_login(CREDS, mobile_query="?fd=2&bydlg=autre&login=true")
 
     assert calls["pronote_url"] == (
-        "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+        "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
         "?fd=2&bydlg=autre&login=true"
     )
 
@@ -108,7 +108,7 @@ def test_query_vide_retombe_sur_la_constante_par_defaut(monkeypatch):
     auth.token_login(CREDS, mobile_query="")
 
     assert calls["pronote_url"] == (
-        "https://0332722e.index-education.net/pronote/mobile.eleve.html"
+        "https://ETABLISSEMENT.index-education.net/pronote/mobile.eleve.html"
         + config.DEFAULT_MOBILE_QUERY
     )
 
